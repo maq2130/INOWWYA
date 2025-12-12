@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INOWYA - Vx.1.2 Interactive</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    
+    <style>
+        :root { --accent: #3b82f6; }
+        body { margin: 0; background: #111827; color: #f3f4f6; font-family: sans-serif; overflow: hidden; }
+        
+        #map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+
+        /* FLOATING PANEL */
+        #floating-panel {
+            position: absolute; top: 20px; left: 20px; width: 380px; 
+            max-height: 90vh; 
+            background: rgba(31, 41, 55, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            z-index: 1000;
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex; flex-direction: column;
+            
+            /* Resizable Properties */
+            resize: both;
+            overflow: hidden; /* Required for resize handle to show properly */
+            min-width: 300px;
+            min-height: 400px;
+        }
+        #floating-panel.collapsed { transform: translateX(-150%); } /* Increased translate to hide fully */
+        
+        /* Custom Resize Handle Indicator */
+        #floating-panel::-webkit-resizer {
+            border-style: solid;
+            border-color: transparent #6b7280 #6b7280 transparent;
+            border-width: 0 0 10px 10px;
+        }
+
+        /* TOGGLE BUTTON */
+        #panel-toggle {
+            position: absolute; top: 20px; left: 20px; z-index: 999;
+            background: #3b82f6; color: white; border: none;
+            width: 40px; height: 40px; border-radius: 8px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: opacity 0.2s;
+        }
+        body:has(#floating-panel:not(.collapsed)) #panel-toggle { opacity: 0; pointer-events: none; }
+
+        .panel-header { padding: 15px 15px 0 15px; border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; cursor: move; }
+        
+        /* TABS */
+        .tab-nav { display: flex; gap: 10px; margin-top: 15px; }
+        .tab-btn { flex: 1; padding: 8px; text-align: center; font-size: 0.8rem; cursor: pointer; border-bottom: 2px solid transparent; color: #9ca3af; transition: 0.2s; }
+        .tab-btn:hover { color: white; background: rgba(255,255,255,0.05); border-radius: 6px 6px 0 0; }
+        .tab-btn.active { border-bottom-color: var(--accent); color: var(--accent); font-weight: bold; }
+
+        .panel-content { padding: 15px; overflow-y: auto; flex: 1; height: 100%; }
+        
+        /* Hide non-active tabs */
+        .tab-view { display: none; }
+        .tab-view.active { display: block; }
+
+        .section-title { font-size: 0.7rem; font-weight: bold; text-transform: uppercase; color: #9ca3af; margin-bottom: 8px; letter-spacing: 1px; }
+        .control-group { margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px; }
+
+        input[type="range"] { width: 100%; accent-color: var(--accent); margin-top: 5px; cursor: pointer; }
+        select, input[type="text"], input[type="number"] { width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 6px; border-radius: 4px; font-size: 0.85rem; }
+        input[type="color"] { width: 30px; height: 30px; border: none; border-radius: 50%; overflow: hidden; cursor: pointer; padding: 0; background: none; }
+        
+        .filter-grid { display: grid; grid-template-columns: 1fr; gap: 4px; max-height: 120px; overflow-y: auto; padding-right: 5px; }
+        .filter-item label { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; cursor: pointer; padding: 4px; border-radius: 4px; transition: 0.2s; }
+        .filter-item label:hover { background: rgba(255,255,255,0.05); }
+        .filter-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* ANALYSIS CARDS */
+        .card { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        .card h3 { font-size: 0.8rem; font-weight: bold; color: #9ca3af; margin-bottom: 10px; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; }
+
+        .cal-day { rx: 2; cursor: pointer; transition: 0.2s; }
+        .cal-day:hover { stroke: white; stroke-width: 1px; }
+        .cal-tooltip { position: absolute; background: #333; padding: 5px; border-radius: 4px; pointer-events: none; font-size: 10px; z-index: 1600; opacity: 0; transition: opacity 0.2s; }
+
+        /* ENRICHMENT */
+        .progress-bar { height: 4px; background: #374151; border-radius: 2px; overflow: hidden; margin-top: 8px; display: none; }
+        .progress-fill { height: 100%; background: #10b981; width: 0%; transition: width 0.2s; }
+        .enrich-status { font-size: 0.7rem; color: #9ca3af; margin-top: 4px; display: none; }
+
+        #loading { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; z-index: 2000; place-items: center; flex-direction: column; }
+        .spinner { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s infinite linear; margin-bottom: 15px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+        
+        #chart-panel {
+            position: absolute; bottom: 20px; right: 20px; width: 400px; height: 160px;
+            background: rgba(31, 41, 55, 0.95); backdrop-filter: blur(10px);
+            border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);
+            z-index: 900; display: none; padding: 10px;
+            /* Resizable */
+            resize: both; overflow: hidden;
+            min-width: 200px; min-height: 100px;
+        }
+        
+        /* New Styles for Top Locations List */
+        .top-loc-item {
+            display: flex; justify-content: space-between; align-items: center; 
+            background: rgba(255,255,255,0.05); padding: 8px; border-radius: 4px; 
+            cursor: pointer; transition: background 0.2s;
+        }
+        .top-loc-item:hover { background: rgba(59, 130, 246, 0.2); }
+        .top-loc-info { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 140px; }
+        .top-loc-rank { font-weight: bold; color: #9ca3af; margin-right: 10px; }
+
+        /* Styles for clickable visit dates */
+        .visit-date-item {
+            padding: 5px; background: rgba(0,0,0,0.2); border-radius: 4px;
+            cursor: pointer; transition: background 0.2s;
+        }
+        .visit-date-item:hover { background: rgba(59, 130, 246, 0.1); }
+        .visit-date-time { font-size: 0.7rem; color: #9ca3af; }
+
+        /* ANIMATION CONTROLS */
+        #anim-controls {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: rgba(31, 41, 55, 0.9); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 30px;
+            padding: 10px 20px; display: flex; align-items: center; gap: 15px; z-index: 900;
+        }
+        #anim-play { background: var(--accent); border: none; border-radius: 50%; width: 36px; height: 36px; color: white; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    </style>
+</head>
+<body>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <div class="text-white font-bold">Processing...</div>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="anim-controls" style="width: 450px;">
+        <button id="anim-play" onclick="toggleAnimation()">▶</button>
+        <div class="flex flex-col w-full gap-1">
+            <input type="range" id="anim-slider" min="0" max="10000" value="0" step="1" oninput="seekAnimation(this.value)" class="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+            <div class="flex justify-between items-center">
+                <span id="anim-time" class="text-xs text-mono text-blue-300 font-bold">00:00</span>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-gray-400 uppercase tracking-wider">Speed:</span>
+                    <select id="anim-speed" onchange="updateSpeed()" class="bg-gray-800 border border-gray-600 text-[10px] text-white rounded px-1 py-0.5 focus:outline-none focus:border-blue-500">
+                        <option value="0.1">0.1x (Frame)</option>
+                        <option value="0.5">0.5x (Slow)</option>
+                        <option value="1">1x (Real)</option>
+                        <option value="5">5x</option>
+                        <option value="10" selected>10x</option>
+                        <option value="50">50x</option>
+                        <option value="200">200x</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button id="panel-toggle" onclick="togglePanel()">☰</button>
+
+    <div id="floating-panel">
+        <div class="panel-header">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h1 class="font-bold text-lg">INOWYA <span class="text-blue-400">Vx.1.2</span></h1>
+                    <div class="text-[10px] text-gray-400">Interactive & Resizable</div>
+                </div>
+                <button onclick="togglePanel()" class="text-gray-400 hover:text-white text-xl">×</button>
+            </div>
+            
+            <div class="tab-nav">
+                <div class="tab-btn active" onclick="switchTab('controls', this)">🎛 Controls</div>
+                <div class="tab-btn" onclick="switchTab('analysis', this)">📊 Analysis</div>
+            </div>
+        </div>
+
+        <div class="panel-content">
+            
+            <div id="view-controls" class="tab-view active">
+                <div class="control-group">
+                    <div class="section-title">Data Source</div>
+                    <div id="drop-zone" class="border-2 border-dashed border-gray-700 rounded-lg p-4 text-center hover:border-blue-500 hover:bg-blue-500/10 transition cursor-pointer">
+                        <div class="text-2xl mb-1">📂</div>
+                        <div class="text-xs text-gray-300">Drop JSON, ZIP, or .inowya</div>
+                        <input type="file" id="file-input" hidden accept=".json,.zip,.inowya">
+                    </div>
+                    <div class="flex gap-2 mt-2">
+                        <button onclick="saveProject()" class="flex-1 py-1 bg-gray-700 hover:bg-gray-600 rounded text-[10px] border border-gray-600">💾 Save</button>
+                        <button onclick="exportGPX()" class="flex-1 py-1 bg-gray-700 hover:bg-gray-600 rounded text-[10px] border border-gray-600">📤 GPX</button>
+                    </div>
+                </div>
+
+                <div class="control-group bg-blue-900/10 border border-blue-500/20 p-3 rounded">
+                    <div class="section-title text-blue-300 mb-2">📅 Smart Date Filter</div>
+                    <input type="text" id="date-range" class="w-full bg-black/40 border border-gray-600 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none" placeholder="Click to select range...">
+                </div>
+
+                <div class="control-group">
+                    <div class="section-title mt-2">Map & Style</div>
+                    <select id="mapType" onchange="changeMapType()" class="mb-3">
+                        <option value="Dark">Carto Dark (Default)</option>
+                        <option value="Light">Carto Light</option>
+                        <option value="OSM">OpenStreetMap</option>
+                        <option value="Satellite">Esri Satellite</option>
+                    </select>
+                    <div class="flex justify-between items-center text-sm mb-2">
+                         <span class="text-gray-400 text-xs">Track Color</span>
+                         <input type="color" id="path-color" value="#3b82f6" onchange="updateStyles()">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="section-title">Filters</div>
+                    <div class="mb-3">
+                        <label class="text-xs text-gray-400 block mb-1">Devices</label>
+                        <div id="device-list" class="filter-grid bg-black/20 rounded p-2 text-xs text-gray-500 italic">Load file...</div>
+                        <button onclick="toggleAllDevices()" class="text-[10px] text-blue-400 mt-1 hover:underline">Toggle All</button>
+                    </div>
+                    <div class="mb-3">
+                        <label class="text-xs text-gray-400 block mb-1">Activities</label>
+                        <div id="activity-list" class="filter-grid bg-black/20 rounded p-2 text-xs text-gray-500 italic">Load file...</div>
+                        <button onclick="toggleAllActivities()" class="text-[10px] text-blue-400 mt-1 hover:underline">Toggle All</button>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-gray-400">Accuracy < </span>
+                            <span id="acc-val" class="text-blue-400">All</span>
+                        </div>
+                        <input type="range" id="acc-slider" min="0" max="5000" step="50" value="5000" oninput="updateLabel('acc-val', this.value, 'm'); fastUpdate()">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="section-title">Layers</div>
+                    <div class="mb-3">
+                        <label class="flex items-center gap-2 text-sm mb-1 cursor-pointer">
+                            <input type="checkbox" id="show-heat" checked onchange="toggleLayer('heat')">
+                            <span class="font-bold text-orange-400">Heatmap</span>
+                        </label>
+                        <div class="pl-5 grid grid-cols-2 gap-2">
+                            <div><span class="text-[10px] text-gray-500">Radius</span><input type="range" id="heat-radius" min="5" max="50" value="15" oninput="updateStyles()"></div>
+                            <div><span class="text-[10px] text-gray-500">Intensity</span><input type="range" id="heat-blur" min="10" max="60" value="20" oninput="updateStyles()"></div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="flex items-center gap-2 text-sm mb-1 cursor-pointer">
+                            <input type="checkbox" id="show-stops" checked onchange="toggleLayer('stops')">
+                            <span class="font-bold text-indigo-400">Stops</span>
+                        </label>
+                        <div class="pl-5">
+                             <div class="flex justify-between text-[10px] text-gray-500"><span>Min Duration</span><span id="stop-min-val">20 min</span></div>
+                             <input type="range" id="stop-duration" min="5" max="120" value="20" oninput="updateLabel('stop-min-val', this.value, ' min'); fastUpdate(); triggerStopCalc()">
+                             <div class="mt-2 pt-2 border-t border-gray-700">
+                                <button onclick="startEnrichment()" id="enrich-btn" class="w-full py-1 px-2 bg-indigo-900/50 hover:bg-indigo-800 border border-indigo-700 text-indigo-200 rounded text-xs transition flex items-center justify-center gap-2"><span>🌍 Enrich Visible Stops</span></button>
+                                <div id="enrich-progress" class="progress-bar"><div class="progress-fill"></div></div>
+                                <div id="enrich-status" class="enrich-status">Zoom map to area first</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="flex items-center gap-2 text-sm cursor-pointer">
+                            <input type="checkbox" id="show-path" checked onchange="toggleLayer('path')">
+                            <span class="font-bold text-blue-400">Path Lines (Clickable)</span>
+                        </label>
+                    </div>
+                    <div class="mb-2"><label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" id="show-datapoints" onchange="toggleLayer('datapoints')"><span class="font-bold text-teal-400">Data Points</span></label></div>
+                    <div class="mb-2"><label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" id="show-pings" onchange="toggleLayer('pings')"><span class="font-bold text-green-400">Raw Pings (Clickable)</span></label></div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <div class="bg-black/30 p-2 rounded text-center border border-white/5"><div id="stat-points" class="text-lg font-bold text-white">0</div><div class="text-[10px] text-gray-500">Points</div></div>
+                    <div class="bg-black/30 p-2 rounded text-center border border-white/5"><div id="stat-dist" class="text-lg font-bold text-white">0</div><div class="text-[10px] text-gray-500">Km Travelled</div></div>
+                </div>
+
+                <button onclick="toggleChart()" class="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded text-xs font-bold text-white transition">Toggle Speed Chart</button>
+            </div>
+
+            <div id="view-analysis" class="tab-view">
+                <div class="card">
+                    <h3>
+                        <span>📍 Top Locations</span>
+                        <select id="top-loc-count" onchange="renderTopLocations()" class="w-20 py-0 text-xs">
+                            <option value="5">Top 5</option>
+                            <option value="10" selected>Top 10</option>
+                            <option value="20">Top 20</option>
+                            <option value="50">Top 50</option>
+                        </select>
+                    </h3>
+                    <div class="text-[10px] text-gray-500 mb-2">Analyzing selected date range...</div>
+                    <div id="top-locations" class="h-64 overflow-y-auto text-xs space-y-1">
+                        </div>
+                </div>
+               
+                <div id="visit-dates-panel" class="card hidden">
+                    <h3 id="visit-dates-title">Visits to: Location Name</h3>
+                    <div id="visit-dates-list" class="h-48 overflow-y-auto text-xs space-y-1"></div>
+                </div>
+
+                <div class="card">
+                    <h3>🏃 Activity Breakdown</h3>
+                    <div id="activity-chart-container" class="h-48 flex justify-center items-center"></div>
+                </div>
+
+                <div class="card">
+                    <h3>📅 Yearly Heatmap</h3>
+                    <div class="text-[10px] text-gray-500 mb-2">Click square to select day. Shows all history.</div>
+                    <div id="cal-heatmap" class="w-full h-48 overflow-x-auto"></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="chart-panel">
+        <button onclick="toggleChart()" class="absolute top-1 right-2 text-gray-400 hover:text-white">×</button>
+        <div id="d3-chart" class="w-full h-full"></div>
+    </div>
+    <div id="cal-tooltip" class="cal-tooltip"></div>
+
+    <script id="worker-code" type="javascript/worker">
+        self.onmessage = function(e) {
+            const { file, type, content, settingsContent } = e.data;
+           
+            let deviceMap = {};
+            if (settingsContent) {
+                try {
+                    const settings = JSON.parse(settingsContent);
+                    if(settings.deviceSettings) {
+                        settings.deviceSettings.forEach(d => {
+                            if(d.deviceTag && d.devicePrettyName) {
+                                deviceMap[d.deviceTag] = d.devicePrettyName;
+                            }
+                        });
+                    }
+                } catch(e) {}
+            }
+
+            if (type === 'json_string') { processJSON(JSON.parse(content), deviceMap); }
+
+            if (type === 'json') {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    try { processJSON(JSON.parse(event.target.result), deviceMap); }
+                    catch (err) { self.postMessage({ status: 'error', message: 'Failed to parse JSON: ' + err.message }); }
+                };
+                reader.readAsText(file);
+            }
+
+            function processJSON(json, devMap) {
+                let rawPoints = [];
+                let locations = json.locations || json.semanticSegments || [];
+                if(!locations.length && json.timelineObjects) locations = json.timelineObjects;
+                if(!locations.length && Array.isArray(json)) locations = json;
+
+                if (locations.length) {
+                    rawPoints = locations.map(loc => {
+                        let devName = "Unknown Device";
+                        if(loc.deviceTag) devName = devMap[loc.deviceTag] || `Device ${loc.deviceTag}`;
+                        else if (loc.source) devName = loc.source;
+                       
+                        // Handle multiple timestamp formats
+                        let ts = loc.timestampMs ? parseInt(loc.timestampMs) : 
+                                (loc.startTime ? new Date(loc.startTime).getTime() : 
+                                (loc.ts ? loc.ts : null));
+                        
+                        if (!ts) return null;
+
+                        return {
+                            lat: (loc.latitudeE7 ? loc.latitudeE7 / 1e7 : loc.lat),
+                            lng: (loc.longitudeE7 ? loc.longitudeE7 / 1e7 : loc.lng),
+                            ts: ts,
+                            acc: loc.accuracy || 0,
+                            spd: loc.velocity || 0,
+                            act: loc.activity ? loc.activity[0].activity[0].type : 'UNKNOWN',
+                            dev: devName
+                        };
+                    }).filter(p => p !== null && p.lat && p.lng && Math.abs(p.lat) > 0.1);
+                } else {
+                    self.postMessage({ status: 'error', message: 'No standard location data found.' });
+                    return;
+                }
+
+                rawPoints.sort((a,b) => a.ts - b.ts);
+
+                const availableDates = new Set();
+                const activities = new Set();
+                const devices = new Set();
+                let totalDist = 0;
+
+                for(let i=0; i<rawPoints.length; i++) {
+                    const p = rawPoints[i];
+                    if(p.act) activities.add(p.act);
+                    if(p.dev) devices.add(p.dev);
+                    const d = new Date(p.ts);
+                    availableDates.add(d.toISOString().split('T')[0]);
+
+                    if(i > 0) {
+                        const prev = rawPoints[i-1];
+                        const dist = getDist(prev, p);
+                        totalDist += dist;
+                        if(!p.spd) { const tDiff = (p.ts - prev.ts)/1000; if(tDiff > 0) p.spd = dist/tDiff; }
+                        p.d_dist = dist;
+                    }
+                }
+
+                self.postMessage({ 
+                    status: 'parsed', 
+                    points: rawPoints, 
+                    activities: Array.from(activities).sort(), 
+                    devices: Array.from(devices).sort(),
+                    availableDates: Array.from(availableDates).sort(), 
+                    stats: { totalDist: totalDist/1000 } 
+                });
+            }
+
+            if (type === 'recalc_stops') {
+                const { points, minDurationMin } = e.data;
+                const stops = [];
+                if(points && points.length > 0) {
+                    let currentStop = { start: points[0], end: points[0] };
+                    const STOP_RADIUS = 50; 
+                    const MIN_DURATION = minDurationMin * 60 * 1000;
+
+                    for(let i=1; i<points.length; i++) {
+                        const p = points[i];
+                        const d = getDist(currentStop.start, p);
+                        if(d < STOP_RADIUS) { currentStop.end = p; } else {
+                            const duration = currentStop.end.ts - currentStop.start.ts;
+                            if(duration > MIN_DURATION) {
+                                stops.push({ lat: currentStop.start.lat, lng: currentStop.start.lng, arrival: currentStop.start.ts, departure: currentStop.end.ts, duration: duration });
+                            }
+                            currentStop = { start: p, end: p };
+                        }
+                    }
+                }
+                self.postMessage({ status: 'stops_calculated', stops: stops });
+            }
+
+            function getDist(p1, p2) {
+                const R = 6371e3; 
+                const rad = Math.PI/180;
+                const lat1 = p1.lat * rad;
+                const lat2 = p2.lat * rad;
+                const dLat = (p2.lat-p1.lat) * rad;
+                const dLon = (p2.lng-p1.lng) * rad;
+
+                const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                        Math.cos(lat1) * Math.cos(lat2) *
+                        Math.sin(dLon/2) * Math.sin(dLon/2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                return R * c;
+            }
+        };
+    </script>
+
+    <script>
+        let map, worker, picker;
+        let layerGroups = { heat: null, path: null, stops: null, datapoints: null, pings: null, anim: null };
+        let tileLayers = {};
+        let allPoints = [], currentStops = [], availableDates = [], currentViewPoints = [];
+        let addressCache = JSON.parse(localStorage.getItem('inowya_addr_cache') || '{}');
+        let isEnriching = false;
+        let throttleTimer = null;
+        let hasInitialZoom = false;
+        let activeTab = 'controls';
+
+        // Animation Vars
+        let animTimer = null;
+        let isPlaying = false;
+        let animIndex = 0;
+        let animSpeed = 10; 
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            initWorker();
+            initUI();
+            
+            // Make panels draggable
+            makeDraggable(document.getElementById('floating-panel'));
+            
+            // Note: Chart panel is fixed in corner by default but we can make it draggable too if needed
+            // makeDraggable(document.getElementById('chart-panel'));
+        });
+        
+        function makeDraggable(element) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            const header = element.querySelector('.panel-header') || element;
+            
+            header.onmousedown = dragMouseDown;
+
+            function dragMouseDown(e) {
+                // Ignore if clicking buttons/inputs
+                if(e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('.tab-nav')) return;
+                
+                e.preventDefault();
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onmouseup = closeDragElement;
+                document.onmousemove = elementDrag;
+            }
+
+            function elementDrag(e) {
+                e.preventDefault();
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                
+                // Safety check to keep in view
+                element.style.top = (element.offsetTop - pos2) + "px";
+                element.style.left = (element.offsetLeft - pos1) + "px";
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+        }
+
+        function initMap() {
+            map = L.map('map', { zoomControl: false }).setView([34.0522, -118.2437], 10);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+            tileLayers.Dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: 'CARTO' });
+            tileLayers.Light = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: 'CARTO' });
+            tileLayers.OSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: 'OSM' });
+            tileLayers.Satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri' });
+            tileLayers.Dark.addTo(map);
+
+            layerGroups.heat = L.heatLayer([], { radius: 15, blur: 20 }).addTo(map);
+            
+            // Use Canvas renderer for better performance with lines
+            const myRenderer = L.canvas({ padding: 0.5 });
+            layerGroups.path = L.polyline([], { color: '#3b82f6', weight: 3, opacity: 0.7, renderer: myRenderer }).addTo(map);
+            
+            // Add click listener to path
+            layerGroups.path.on('click', function(e) {
+                findNearestPointOnPath(e.latlng);
+            });
+
+            layerGroups.stops = L.markerClusterGroup({ disableClusteringAtZoom: 16 }).addTo(map);
+            layerGroups.datapoints = L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 40 });
+            
+            // Prevent identical points from expanding spiderfy
+            layerGroups.pings = L.markerClusterGroup({ 
+                disableClusteringAtZoom: 18, 
+                maxClusterRadius: 80,
+                spiderfyOnMaxZoom: false 
+            });
+            
+            layerGroups.anim = L.layerGroup().addTo(map);
+
+            changeMapType();
+            updateStyles();
+        }
+
+        function findNearestPointOnPath(latlng) {
+            if(!currentViewPoints || currentViewPoints.length === 0) return;
+            
+            let closest = null;
+            let minDist = Infinity;
+            
+            // Linear search is fast enough for ~50k points in browser usually. 
+            // For huge datasets, we'd need a spatial index (kdbush), but let's keep it simple.
+            // We search currentViewPoints because that's what makes up the line.
+            
+            currentViewPoints.forEach(p => {
+                const d = Math.pow(p.lat - latlng.lat, 2) + Math.pow(p.lng - latlng.lng, 2);
+                if(d < minDist) {
+                    minDist = d;
+                    closest = p;
+                }
+            });
+
+            if(closest) {
+                const d = new Date(closest.ts);
+                const dateStr = d.toLocaleDateString(undefined, {weekday:'short', year:'numeric', month:'short', day:'numeric'});
+                const timeStr = d.toLocaleTimeString();
+                const spd = (closest.spd * 3.6).toFixed(1);
+                
+                L.popup()
+                    .setLatLng([closest.lat, closest.lng])
+                    .setContent(`
+                        <div class="text-gray-800">
+                            <b>${dateStr}</b><br>
+                            Time: ${timeStr}<br>
+                            Speed: ${spd} km/h<br>
+                            Activity: ${closest.act}
+                        </div>
+                    `)
+                    .openOn(map);
+            }
+        }
+
+        function initWorker() {
+            const blob = new Blob([document.getElementById('worker-code').textContent], { type: "text/javascript" });
+            worker = new Worker(window.URL.createObjectURL(blob));
+            worker.onmessage = function(e) {
+                const data = e.data;
+                if(data.status === 'parsed') {
+                    allPoints = data.points;
+                    availableDates = data.availableDates; 
+                    setupDatePicker(availableDates);
+                    generateActivityCheckboxes(data.activities);
+                    generateDeviceCheckboxes(data.devices);
+                    document.getElementById('stat-points').innerText = allPoints.length.toLocaleString();
+                    document.getElementById('stat-dist').innerText = data.stats.totalDist.toFixed(0);
+                    hasInitialZoom = false;
+                    renderCalendarHeatmap(); 
+                    triggerStopCalc(); 
+                }
+                if(data.status === 'stops_calculated') {
+                    currentStops = data.stops;
+                    fastUpdate(); 
+                    hideLoading();
+                }
+                if(data.status === 'error') { hideLoading(); alert(data.message); }
+            };
+        }
+
+        // --- TABS ---
+        function switchTab(tab, btn) {
+            activeTab = tab;
+            document.querySelectorAll('.tab-view').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(`view-${tab}`).classList.add('active');
+            if(btn) btn.classList.add('active');
+            if(tab === 'analysis') refreshAnalysis();
+        }
+
+        // --- RENDER ---
+        function updateMapVisualization() {
+            const accMax = parseInt(document.getElementById('acc-slider').value);
+            const dateRange = document.getElementById('date-range')._flatpickr.selectedDates;
+            const checkedActs = new Set(Array.from(document.querySelectorAll('.act-cb:checked')).map(c => c.value));
+            const checkedDevs = new Set(Array.from(document.querySelectorAll('.dev-cb:checked')).map(c => c.value));
+           
+            if(allPoints.length === 0) return;
+
+            let viewPoints = allPoints.filter(p => p.acc <= accMax && checkedActs.has(p.act) && (p.dev === undefined || checkedDevs.has(p.dev)));
+           
+            if(dateRange.length === 2) {
+                const start = dateRange[0].setHours(0,0,0,0);
+                const end = dateRange[1].setHours(23,59,59,999);
+                viewPoints = viewPoints.filter(p => p.ts >= start && p.ts <= end);
+            }
+            currentViewPoints = viewPoints; 
+
+            // Update Layers
+            if(document.getElementById('show-heat').checked) layerGroups.heat.setLatLngs(viewPoints.map(p => [p.lat, p.lng, 0.5]));
+            else layerGroups.heat.setLatLngs([]);
+           
+            if(document.getElementById('show-path').checked) layerGroups.path.setLatLngs(viewPoints.map(p => [p.lat, p.lng]));
+            else layerGroups.path.setLatLngs([]);
+
+            layerGroups.datapoints.clearLayers();
+            if(document.getElementById('show-datapoints').checked) {
+                const pSub = viewPoints.length > 50000 ? viewPoints.filter((_,i)=>i%5===0) : viewPoints;
+                pSub.forEach(p => {
+                    layerGroups.datapoints.addLayer(createPopupMarker(p, '#10b981', 2));
+                });
+                if(!map.hasLayer(layerGroups.datapoints)) map.addLayer(layerGroups.datapoints);
+            } else {
+                if(map.hasLayer(layerGroups.datapoints)) map.removeLayer(layerGroups.datapoints);
+            }
+
+            layerGroups.pings.clearLayers();
+            if(document.getElementById('show-pings').checked) {
+                const pSub = viewPoints.length > 50000 ? viewPoints.filter((_,i)=>i%5===0) : viewPoints;
+                pSub.forEach(p => {
+                    layerGroups.pings.addLayer(createPopupMarker(p, '#22c55e', 3));
+                });
+            }
+
+            layerGroups.stops.clearLayers();
+            if(document.getElementById('show-stops').checked) {
+                let viewStops = currentStops;
+                if(dateRange.length === 2) viewStops = viewStops.filter(s => s.arrival >= dateRange[0].getTime() && s.departure <= dateRange[1].getTime());
+               
+                viewStops.forEach(s => {
+                    const dur = (s.duration/60000).toFixed(0);
+                    const key = `${s.lat.toFixed(4)},${s.lng.toFixed(4)}`;
+                    const address = addressCache[key] || "<i>(Click Enrich)</i>";
+                    const dStart = new Date(s.arrival);
+                    const dEnd = new Date(s.departure);
+                    const timeOpts = { hour: 'numeric', minute: '2-digit' };
+                    const dateStr = dStart.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+                    const mk = L.circleMarker([s.lat,s.lng], {radius:8, color:'#6366f1', fillColor:'#818cf8', fillOpacity:0.9})
+                        .bindPopup(`<b>${address}</b><br>${dateStr}<br>${dStart.toLocaleTimeString([], timeOpts)} - ${dEnd.toLocaleTimeString([], timeOpts)}<br>(${dur} min)`);
+                    layerGroups.stops.addLayer(mk);
+                });
+            }
+
+            if(!hasInitialZoom && viewPoints.length > 0) { 
+                map.fitBounds(L.latLngBounds(viewPoints.map(p => [p.lat, p.lng]))); 
+                hasInitialZoom = true; 
+            }
+            updateChart(viewPoints);
+            stopAnimation();
+            animIndex = 0;
+            updateAnimSlider();
+           
+            if(activeTab === 'analysis') refreshAnalysis();
+        }
+
+        function createPopupMarker(p, color, r) {
+            const d = new Date(p.ts);
+            const dateStr = d.toLocaleDateString(undefined, {weekday:'short', year:'numeric', month:'short', day:'numeric'});
+            const timeStr = d.toLocaleTimeString();
+            const accStr = p.acc < 5000 ? `${p.acc.toFixed(0)}m` : 'Unknown';
+            const spdStr = (p.spd * 3.6).toFixed(1);
+            const devStr = p.dev ? `<br><span class="text-xs text-gray-400">📱 ${p.dev}</span>` : '';
+            const popupContent = `
+                <b>${dateStr} @ ${timeStr}</b><br>
+                Activity: ${p.act}<br>
+                Speed: ${spdStr} km/h<br>
+                Accuracy: ${accStr}
+                ${devStr}
+            `;
+            return L.circleMarker([p.lat,p.lng], {radius:r, color:color, fillColor:color, fillOpacity:0.8, weight:1})
+                .bindPopup(popupContent);
+        }
+
+        // --- ANALYSIS LOGIC ---
+        function refreshAnalysis() {
+            if(!currentViewPoints.length) return;
+            renderActivityBreakdown();
+            renderTopLocations();
+        }
+
+        function renderActivityBreakdown() {
+            const counts = {};
+            currentViewPoints.forEach(p => { counts[p.act] = (counts[p.act] || 0) + 1; });
+            const data = Object.entries(counts).map(([k,v]) => ({label:k, value:v})).sort((a,b)=>b.value-a.value);
+           
+            const container = document.getElementById('activity-chart-container');
+            container.innerHTML = '';
+            if(!data.length) { container.innerHTML = '<span class="text-xs text-gray-500">No data for selection</span>'; return; }
+           
+            const w = 300, h = 180, r = Math.min(w,h)/2;
+            const svg = d3.select(container).append('svg').attr('width', w).attr('height', h)
+                .append('g').attr('transform', `translate(${w/2},${h/2})`);
+           
+            const color = d3.scaleOrdinal(d3.schemeCategory10);
+            const pie = d3.pie().value(d => d.value);
+            const arc = d3.arc().innerRadius(r*0.6).outerRadius(r*0.9);
+
+            svg.selectAll('path').data(pie(data)).enter().append('path')
+                .attr('d', arc).attr('fill', d => color(d.data.label))
+                .append('title').text(d => `${d.data.label}: ${d.data.value}`);
+
+            svg.append('text').attr('text-anchor','middle').attr('dy', '0.3em').attr('fill','white').attr('font-size','10px')
+               .text(data[0].label);
+        }
+
+        function renderTopLocations() {
+            const limit = parseInt(document.getElementById('top-loc-count').value);
+            const dateRange = document.getElementById('date-range')._flatpickr.selectedDates;
+            document.getElementById('visit-dates-panel').classList.add('hidden');
+
+            let relevantStops = currentStops;
+            if(dateRange.length === 2) {
+                 const start = dateRange[0].getTime();
+                 const end = dateRange[1].getTime();
+                 relevantStops = relevantStops.filter(s => s.arrival >= start && s.departure <= end);
+            }
+
+            // 1. Initial grouping by Coordinate Key
+            const grouped = [];
+            relevantStops.forEach(s => {
+                const key = `${s.lat.toFixed(4)},${s.lng.toFixed(4)}`;
+                const name = addressCache[key] || `Location @ ${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`;
+               
+                let found = grouped.find(g => g.key === key);
+                if(found) { 
+                    found.count++; 
+                    found.duration += s.duration; 
+                    found.visits.push({ arrival: s.arrival, departure: s.departure, duration: s.duration });
+                } else { 
+                    grouped.push({ 
+                        key: key, lat: s.lat, lng: s.lng, name: name,
+                        count: 1, duration: s.duration, 
+                        visits: [{ arrival: s.arrival, departure: s.departure, duration: s.duration }] 
+                    }); 
+                }
+            });
+
+            // 2. Second Pass: Merge by Address Name to remove duplicates
+            const merged = [];
+            grouped.forEach(g => {
+                // If name is just the default coordinates, we keep it separate (unless coords match exactly, handled by step 1)
+                // If name is a real address, we look for existing entry with that name
+                
+                let target = null;
+                const isGeneric = g.name.startsWith("Location @");
+                
+                if (!isGeneric) {
+                    target = merged.find(m => m.name === g.name);
+                }
+                
+                if (target) {
+                    target.count += g.count;
+                    target.duration += g.duration;
+                    target.visits = target.visits.concat(g.visits);
+                } else {
+                    merged.push(g);
+                }
+            });
+
+            merged.sort((a,b) => b.duration - a.duration);
+            const top = merged.slice(0, limit); 
+           
+            const list = document.getElementById('top-locations');
+            list.innerHTML = '';
+           
+            if(!top.length) { list.innerHTML = '<span class="text-xs text-gray-500">No stops in range</span>'; return; }
+
+            top.forEach((loc, i) => {
+                const row = document.createElement('div');
+                row.className = "top-loc-item";
+                const hrs = (loc.duration / 3600000).toFixed(1);
+
+                row.innerHTML = `<span class="top-loc-rank">#${i+1}</span>
+                                 <span class="top-loc-info" title="${loc.name}">${loc.name}</span> 
+                                 <span class="text-gray-400">${loc.count}x</span> 
+                                 <span class="text-blue-400 font-bold">${hrs}h</span>`;
+                                  
+                row.onclick = () => showVisitDates(loc);
+                list.appendChild(row);
+            });
+        }
+       
+        function showVisitDates(locationData) {
+            const list = document.getElementById('visit-dates-list');
+            const panel = document.getElementById('visit-dates-panel');
+            
+            document.getElementById('visit-dates-title').innerText = `Visits to: ${locationData.name}`;
+            list.innerHTML = '';
+           
+            locationData.visits.sort((a, b) => b.arrival - a.arrival);
+
+            locationData.visits.forEach(visit => {
+                const item = document.createElement('div');
+                item.className = 'visit-date-item';
+               
+                const dStart = new Date(visit.arrival);
+                const dEnd = new Date(visit.departure);
+                const timeOpts = { hour: 'numeric', minute: '2-digit' };
+                const durMin = (visit.duration/60000).toFixed(0);
+               
+                const dateStr = dStart.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+                const timeStr = `${dStart.toLocaleTimeString([], timeOpts)} - ${dEnd.toLocaleTimeString([], timeOpts)} (${durMin} min)`;
+               
+                item.innerHTML = `<div>${dateStr}</div>
+                                  <div class="visit-date-time">${timeStr}</div>`;
+                                
+                item.onclick = (e) => {
+                    e.stopPropagation(); 
+                    map.setView([locationData.lat, locationData.lng], 16);
+                };
+                list.appendChild(item);
+            });
+           
+            panel.classList.remove('hidden');
+        }
+
+        function renderCalendarHeatmap() {
+            const daily = {};
+            allPoints.forEach(p => {
+                const day = new Date(p.ts).toISOString().split('T')[0];
+                if(!daily[day]) daily[day] = 0;
+                daily[day] += (p.d_dist || 0);
+            });
+            const data = Object.entries(daily).map(([day, dist]) => ({ date: new Date(day), dist: dist/1000 }));
+            if(!data.length) return;
+
+            const container = document.getElementById('cal-heatmap');
+            container.innerHTML = '';
+           
+            const cellSize = 12;
+            const height = cellSize * 7 + 20;
+            const years = d3.groups(data, d => d.date.getUTCFullYear());
+           
+            years.forEach(([year, values]) => {
+                const yearDiv = document.createElement('div');
+                yearDiv.innerHTML = `<h4 class="text-xs font-bold text-gray-500 sticky left-0 mt-2">${year}</h4>`;
+                container.appendChild(yearDiv);
+
+                const svg = d3.select(yearDiv).append('svg')
+                    .attr('width', 53 * cellSize + 20).attr('height', height);
+                const g = svg.append('g').attr('transform', `translate(10, 0)`);
+                const color = d3.scaleSequential(d3.interpolateBlues).domain([0, 100]); 
+
+                g.selectAll('rect').data(values).enter().append('rect')
+                    .attr('width', cellSize - 2).attr('height', cellSize - 2)
+                    .attr('x', d => d3.utcWeek.count(d3.utcYear(d.date), d.date) * cellSize)
+                    .attr('y', d => d.date.getUTCDay() * cellSize)
+                    .attr('fill', d => d.dist === 0 ? '#1f2937' : color(d.dist))
+                    .attr('class', 'cal-day')
+                    .on('click', (e, d) => {
+                        const str = d.date.toISOString().split('T')[0];
+                        picker.setDate([str, str], true); 
+                    })
+                    .append('title').text(d => `${d.date.toDateString()}\n${d.dist.toFixed(1)} km`);
+            });
+        }
+
+        // --- ANIMATION ---
+        function updateSpeed() { animSpeed = parseFloat(document.getElementById('anim-speed').value); }
+        function toggleAnimation() { if(isPlaying) stopAnimation(); else startAnimation(); }
+        function startAnimation() {
+            if(currentViewPoints.length < 2) return;
+            isPlaying = true; document.getElementById('anim-play').innerText = '⏸';
+            layerGroups.anim.clearLayers();
+            const marker = L.circleMarker([currentViewPoints[Math.floor(animIndex)].lat, currentViewPoints[Math.floor(animIndex)].lng], {
+                radius: 8, color: '#ffffff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2
+            }).addTo(layerGroups.anim);
+            function animate() {
+                if(!isPlaying) return;
+                animIndex += animSpeed; 
+                if(animIndex >= currentViewPoints.length) { animIndex = currentViewPoints.length - 1; updateAnimSlider(); stopAnimation(); return; }
+                const p = currentViewPoints[Math.floor(animIndex)];
+                marker.setLatLng([p.lat, p.lng]);
+                if(Math.floor(animIndex) % 5 === 0) updateAnimSlider();
+                animTimer = requestAnimationFrame(animate);
+            }
+            animate();
+        }
+        function stopAnimation() { isPlaying = false; document.getElementById('anim-play').innerText = '▶'; cancelAnimationFrame(animTimer); }
+        function seekAnimation(val) {
+            if(currentViewPoints.length < 2) return;
+            const pct = val / 10000; animIndex = Math.floor(pct * (currentViewPoints.length - 1));
+            const p = currentViewPoints[animIndex]; layerGroups.anim.clearLayers();
+            L.circleMarker([p.lat, p.lng], { radius: 8, color: '#ffffff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }).addTo(layerGroups.anim);
+            updateUIForAnimFrame(p);
+        }
+        function updateAnimSlider() {
+            if(currentViewPoints.length < 1) return;
+            const pct = (animIndex / (currentViewPoints.length - 1)) * 10000;
+            document.getElementById('anim-slider').value = pct;
+            updateUIForAnimFrame(currentViewPoints[Math.floor(animIndex)]);
+        }
+        function updateUIForAnimFrame(p) {
+            if(!p) return; const d = new Date(p.ts);
+            document.getElementById('anim-time').innerText = `${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+        }
+
+        // --- EXPORT & UTILS ---
+        function exportGPX() {
+            if(!currentViewPoints.length) return alert("No points visible");
+            let gpx = `<?xml version="1.1" encoding="UTF-8"?><gpx version="1.1" creator="INOWYA"><trk><name>Exported Track</name><trkseg>`;
+            currentViewPoints.forEach(p => { gpx += `<trkpt lat="${p.lat}" lon="${p.lng}"><time>${new Date(p.ts).toISOString()}</time></trkpt>`; });
+            gpx += `</trkseg></trk></gpx>`;
+            download(gpx, `inowya_export_${Date.now()}.gpx`, 'application/gpx+xml');
+        }
+        function saveProject() { if(!allPoints.length) return; const data = JSON.stringify(allPoints); download(data, `project_backup_${Date.now()}.inowya`, 'application/json'); }
+        function download(content, fileName, mimeType) { const a = document.createElement("a"); const file = new Blob([content], {type: mimeType}); a.href = URL.createObjectURL(file); a.download = fileName; a.click(); }
+
+        function fastUpdate() { if(throttleTimer) return; throttleTimer = setTimeout(() => { updateMapVisualization(); throttleTimer = null; }, 50); }
+        function changeMapType() { const type = document.getElementById('mapType').value; for(let k in tileLayers) if(map.hasLayer(tileLayers[k])) map.removeLayer(tileLayers[k]); if(tileLayers[type]) tileLayers[type].addTo(map); const pathColor = document.getElementById('path-color').value; layerGroups.path.setStyle({ color: pathColor }); }
+        function updateStyles() { const c = document.getElementById('path-color').value; layerGroups.path.setStyle({ color: c }); const r = parseInt(document.getElementById('heat-radius').value); const b = parseInt(document.getElementById('heat-blur').value); layerGroups.heat.setOptions({ radius: r, blur: b }); }
+        function triggerStopCalc() { const minMins = parseInt(document.getElementById('stop-duration').value); worker.postMessage({ type: 'recalc_stops', points: allPoints, minDurationMin: minMins }); }
+        
+        function initUI() {
+            const dz = document.getElementById('drop-zone'); const inp = document.getElementById('file-input');
+            ['dragenter','dragover','dragleave','drop'].forEach(e => document.body.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); }));
+            dz.addEventListener('drop', e => { if(e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]); });
+            dz.addEventListener('click', () => inp.click());
+            inp.addEventListener('change', e => { if(e.target.files.length) loadFile(e.target.files[0]); });
+            setupDatePicker([]); 
+        }
+        function loadFile(file) {
+            showLoading();
+            if(file.name.endsWith('.json') || file.name.endsWith('.inowya')) worker.postMessage({ file, type: 'json' });
+            else if(file.name.endsWith('.zip')) {
+                JSZip.loadAsync(file).then(zip => { 
+                    const recordsFile = Object.keys(zip.files).find(n => n.includes('Records.json') || n.endsWith('.json') && !n.includes('Settings.json'));
+                    const settingsFile = Object.keys(zip.files).find(n => n.includes('Settings.json'));
+                    if(recordsFile) {
+                        const promises = [zip.file(recordsFile).async('blob')];
+                        if(settingsFile) promises.push(zip.file(settingsFile).async('text'));
+                        Promise.all(promises).then(([blob, settingsText]) => { worker.postMessage({ file: blob, type: 'json', settingsContent: settingsText }); });
+                    } else { hideLoading(); alert('No JSON location file found in ZIP'); } 
+                }).catch(e => { hideLoading(); alert('Failed to read ZIP: '+e.message); });
+            } else { hideLoading(); alert('Invalid file type.'); }
+        }
+        function setupDatePicker(validDates) { if(picker) picker.destroy(); picker = flatpickr("#date-range", { mode: "range", dateFormat: "Y-m-d", theme: "dark", enable: validDates, onChange: fastUpdate }); }
+        function generateDeviceCheckboxes(devs) { const list = document.getElementById('device-list'); list.innerHTML = ''; if(!devs || !devs.length) { list.innerHTML = '<span class="text-gray-500">No devices found</span>'; return; } devs.forEach(dev => { const div = document.createElement('div'); div.className = 'filter-item'; div.innerHTML = `<label><input type="checkbox" class="dev-cb" value="${dev}" checked onchange="fastUpdate()"><span title="${dev}">${dev}</span></label>`; list.appendChild(div); }); }
+        function toggleAllDevices() { const cbs = document.querySelectorAll('.dev-cb'); const anyUnchecked = Array.from(cbs).some(c => !c.checked); cbs.forEach(c => c.checked = anyUnchecked); fastUpdate(); }
+        function generateActivityCheckboxes(acts) { const list = document.getElementById('activity-list'); list.innerHTML = ''; acts.forEach(act => { const div = document.createElement('div'); div.className = 'filter-item'; div.innerHTML = `<label><input type="checkbox" class="act-cb" value="${act}" checked onchange="fastUpdate()"><span>${act}</span></label>`; list.appendChild(div); }); }
+        function toggleAllActivities() { const cbs = document.querySelectorAll('.act-cb'); const anyUnchecked = Array.from(cbs).some(c => !c.checked); cbs.forEach(c => c.checked = anyUnchecked); fastUpdate(); }
+        function updateLabel(id, val, suffix) { document.getElementById(id).innerText = val + (suffix||''); }
+        function toggleLayer(key) { 
+            if (key === 'datapoints') { 
+                const checkbox = document.getElementById('show-datapoints');
+                if (checkbox.checked) {
+                    if (!map.hasLayer(layerGroups.datapoints)) map.addLayer(layerGroups.datapoints);
+                } else {
+                    if (map.hasLayer(layerGroups.datapoints)) map.removeLayer(layerGroups.datapoints);
+                }
+            }
+            fastUpdate(); 
+        }
+        function togglePanel() { document.getElementById('floating-panel').classList.toggle('collapsed'); }
+        function toggleChart() { const cp = document.getElementById('chart-panel'); cp.style.display = cp.style.display === 'block' ? 'none' : 'block'; setTimeout(fastUpdate, 100); }
+        function updateChart(points) {
+            const container = document.getElementById('d3-chart'); if(container.offsetParent === null) return;
+            container.innerHTML = ''; if(points.length === 0) return;
+            const chartData = points.length > 2000 ? points.filter((_,i) => i%Math.ceil(points.length/2000) === 0) : points;
+            const w = container.clientWidth; const h = container.clientHeight; if(w===0) return;
+            const svg = d3.select(container).append('svg').attr('width', w).attr('height', h);
+            const x = d3.scaleTime().domain(d3.extent(chartData, d => new Date(d.ts))).range([0, w]);
+            const y = d3.scaleLinear().domain([0, d3.max(chartData, d => (d.spd||0)*3.6)]).range([h, 0]);
+            const line = d3.line().x(d => x(new Date(d.ts))).y(d => y((d.spd||0)*3.6)).defined(d => !isNaN(d.spd)); 
+            svg.append('path').datum(chartData).attr('fill', 'none').attr('stroke', '#60a5fa').attr('stroke-width', 1.5).attr('d', line);
+        }
+        function showLoading() { document.getElementById('loading').style.display = 'flex'; }
+        function hideLoading() { document.getElementById('loading').style.display = 'none'; }
+        
+        async function startEnrichment() {
+            if(isEnriching || !currentStops.length) return;
+            const bounds = map.getBounds(); const dateRange = document.getElementById('date-range')._flatpickr.selectedDates;
+            let start = 0, end = 9999999999999; if(dateRange.length === 2) { start = dateRange[0].setHours(0,0,0,0); end = dateRange[1].setHours(23,59,59,999); }
+            const needsData = currentStops.filter(s => { const isVisible = bounds.contains([s.lat, s.lng]); const isTime = s.arrival >= start && s.departure <= end; const key = `${s.lat.toFixed(4)},${s.lng.toFixed(4)}`; return isVisible && isTime && !addressCache[key]; });
+            if(!needsData.length) { document.getElementById('enrich-status').innerText = "No new stops visible."; document.getElementById('enrich-status').style.display = 'block'; return; }
+            isEnriching = true; const btn = document.getElementById('enrich-btn'); const bar = document.getElementById('enrich-progress'); const fill = bar.querySelector('div'); const txt = document.getElementById('enrich-status');
+            btn.disabled = true; bar.style.display = 'block'; txt.style.display = 'block';
+            for(let i=0; i<needsData.length; i++) {
+                const stop = needsData[i]; const key = `${stop.lat.toFixed(4)},${stop.lng.toFixed(4)}`; txt.innerText = `Fetching ${i+1}/${needsData.length}`; fill.style.width = ((i/needsData.length)*100)+'%';
+                try { const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${stop.lat}&lon=${stop.lng}&zoom=18&addressdetails=1`; const res = await fetch(url, { headers: { 'User-Agent': 'INOWYA/V8.1' } }); if(res.ok) { const d = await res.json(); const addr = d.address; const short = addr ? `${addr.road||''}, ${addr.city||addr.town||''}` : "Unknown"; addressCache[key] = short.replace(/^,/, '').trim(); if(i%5===0) localStorage.setItem('inowya_addr_cache', JSON.stringify(addressCache)); } } catch(e) {}
+                await new Promise(r => setTimeout(r, 1100));
+            }
+            localStorage.setItem('inowya_addr_cache', JSON.stringify(addressCache)); isEnriching = false; btn.disabled = false; bar.style.display = 'none'; txt.style.display = 'none'; fastUpdate();
+        }
+    </script>
+</body>
+</html>
