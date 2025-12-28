@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INOWYA - Vx.3.8 (Interaction Fix)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css"/>
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet.glify@3.2.0/dist/glify-browser.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    
+    <style>
+        :root { --accent: #3b82f6; --highlight: #ef4444; }
+        body { margin: 0; background: #111827; color: #f3f4f6; font-family: sans-serif; overflow: hidden; }
+        #map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; cursor: crosshair; }
+
+        /* PANEL */
+        #floating-panel {
+            position: absolute; top: 20px; left: 20px; width: 400px; height: 85vh;
+            background: rgba(31, 41, 55, 0.95); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 1000;
+            display: flex; flex-direction: column; transition: transform 0.3s;
+            resize: both; overflow: hidden; min-width: 320px; min-height: 400px;
+        }
+        #floating-panel.collapsed { transform: translateX(-150%); } 
+
+        .panel-header { padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; cursor: move; }
+        .panel-content { padding: 15px; overflow-y: auto; flex: 1; }
+
+        /* TABS */
+        .tab-nav { display: flex; gap: 10px; margin-top: 10px; }
+        .tab-btn { flex: 1; padding: 8px; text-align: center; font-size: 0.8rem; cursor: pointer; border-bottom: 2px solid transparent; color: #9ca3af; }
+        .tab-btn.active { border-bottom-color: var(--accent); color: var(--accent); font-weight: bold; }
+        .tab-view { display: none; }
+        .tab-view.active { display: block; }
+        
+        /* CONTROLS */
+        .section-title { font-size: 0.7rem; font-weight: bold; text-transform: uppercase; color: #9ca3af; margin-bottom: 8px; letter-spacing: 1px; }
+        .control-group { margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px; }
+        
+        input[type="range"] { width: 100%; accent-color: var(--accent); margin-top: 5px; cursor: pointer; }
+        select, input[type="text"] { width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 6px; border-radius: 4px; font-size: 0.85rem; }
+
+        /* LISTS */
+        .card { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        .top-loc-item { display: flex; justify-content: space-between; padding: 6px; border-radius: 4px; background: rgba(255,255,255,0.05); cursor: pointer; font-size: 0.75rem; margin-bottom: 2px; border-left: 3px solid transparent; transition: background 0.2s; }
+        .top-loc-item:hover { background: rgba(59, 130, 246, 0.2); }
+        .top-loc-item.active-highlight { background: rgba(239, 68, 68, 0.25); border-left-color: #ef4444; }
+        
+        /* ALERTS & ANOMALIES */
+        .anomaly-item { border-left: 3px solid #ef4444; background: rgba(239, 68, 68, 0.1); padding: 5px; margin-bottom: 2px; font-size: 0.7rem; cursor: pointer; }
+        .gap-item { border-left: 3px solid #eab308; background: rgba(234, 179, 8, 0.1); padding: 5px; margin-bottom: 2px; font-size: 0.7rem; cursor: pointer; }
+
+        .visit-item { padding: 4px; font-size: 0.7rem; color: #9ca3af; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; }
+        .visit-item:hover { color: white; background: rgba(255,255,255,0.05); }
+
+        /* LOADING */
+        #loading { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; z-index: 2000; flex-direction: column; align-items: center; justify-content: center; }
+        .spinner { width: 60px; height: 60px; border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid var(--accent); border-radius: 50%; animation: spin 1s infinite linear; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #loading-percent { font-size: 2rem; font-weight: bold; color: #3b82f6; margin-top: 10px; }
+
+        /* ANIMATION CONTROLS */
+        #anim-controls {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: rgba(31, 41, 55, 0.95); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 30px;
+            padding: 10px 20px; display: flex; align-items: center; gap: 10px; z-index: 900;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .anim-btn { background: #374151; color: white; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; transition: 0.2s; }
+        .anim-btn:hover { background: #4b5563; }
+        #anim-play { background: var(--accent); width: 38px; height: 38px; font-size: 14px; }
+        #anim-play:hover { background: #2563eb; }
+
+        .speed-legend { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 6px; font-size: 10px; color: #ccc; pointer-events: none; z-index: 800; }
+        .speed-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+        .progress-bar { height: 4px; background: #374151; border-radius: 2px; overflow: hidden; margin-top: 8px; display: none; }
+        .progress-fill { height: 100%; background: #10b981; width: 0%; transition: width 0.2s; }
+        .skip-indicator { position: absolute; bottom: 90px; left: 50%; transform:translateX(-50%); background:rgba(239, 68, 68, 0.9); color:white; font-weight:bold; font-size:10px; padding:4px 8px; border-radius:4px; opacity:0; transition:opacity 0.2s; pointer-events:none; }
+        .skip-indicator.visible { opacity:1; }
+
+        #panel-toggle { position: absolute; top: 20px; left: 20px; z-index: 999; background: #3b82f6; color: white; border: none; width: 40px; height: 40px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        body:has(#floating-panel:not(.collapsed)) #panel-toggle { opacity: 0; pointer-events: none; }
+
+        @media print {
+          body { background: white; color: black; }
+          #floating-panel, #anim-controls, .speed-legend { display: none !important; }
+          #map { position: static; height: 400px; page-break-after: always; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="loading-percent">0%</div>
+        <div class="text-gray-400 text-sm mt-2" id="loading-msg">Initializing...</div>
+    </div>
+
+    <div id="map"></div>
+    <div id="skip-indicator" class="skip-indicator">⏩ Fast-forwarding stopped time...</div>
+    
+    <div class="speed-legend">
+        <div class="mb-1 font-bold text-gray-400">SPEED (Behavior)</div>
+        <div><span class="speed-dot" style="background:#3b82f6"></span>Walking (&lt;5 km/h)</div>
+        <div><span class="speed-dot" style="background:#10b981"></span>Cycling (5-25 km/h)</div>
+        <div><span class="speed-dot" style="background:#eab308"></span>Driving (25-80 km/h)</div>
+        <div><span class="speed-dot" style="background:#ef4444"></span>Highway (&gt;80 km/h)</div>
+        <div class="mt-2 text-[9px] text-gray-500">Click path for details</div>
+    </div>
+
+    <div id="anim-controls" style="width: 520px;">
+        <button class="anim-btn" onclick="stepFrame(-1)" title="Back 1 Frame">I◀</button>
+        <button id="anim-play" onclick="toggleAnimation()" class="anim-btn" title="Play/Pause">▶</button>
+        <button class="anim-btn" onclick="stepFrame(1)" title="Next Frame">▶I</button>
+        
+        <div class="flex flex-col w-full gap-1 ml-1">
+            <input type="range" id="anim-slider" min="0" max="10000" value="0" step="1" oninput="seekAnimation(this.value)" class="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+            <div class="flex justify-between items-center text-[10px] text-gray-400">
+                <span id="anim-time" class="text-xs text-red-400 font-bold font-mono">00:00</span>
+                <select id="anim-speed" onchange="updateSpeed()" class="bg-gray-800 border-none rounded text-white focus:ring-0 text-xs text-right py-0">
+                    <option value="-500">⏪ -500x</option>
+                    <option value="-10">⏪ -10x</option>
+                    <option value="-1">◀ -1x</option>
+                    <option value="0.001">🐌 Super Slow (0.001x)</option>
+                    <option value="0.01">🐢 Slower (0.01x)</option>
+                    <option value="0.05">🚶 Slow (0.05x)</option>
+                    <option value="0.1" selected>▶ 0.1x (Default)</option>
+                    <option value="0.5">▶ 0.5x</option>
+                    <option value="1">▶ 1x (Real Time)</option>
+                    <option value="2">⏩ 2x</option>
+                    <option value="5">⏩ 5x</option>
+                    <option value="10">⏩ 10x</option>
+                    <option value="100">⏩ 100x</option>
+                    <option value="500">⏩ 500x</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <button id="panel-toggle" onclick="togglePanel()">☰</button>
+
+    <div id="floating-panel">
+        <div class="panel-header">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h1 class="font-bold text-lg">INOWYA <span class="text-blue-400">Vx.3.8</span></h1>
+                    <div class="text-[10px] text-gray-400">Interaction Fix</div>
+                </div>
+                <button onclick="togglePanel()" class="text-gray-400 hover:text-white text-xl">×</button>
+            </div>
+            <div class="tab-nav">
+                <div class="tab-btn active" onclick="switchTab('controls', this)">🎛 Controls</div>
+                <div class="tab-btn" onclick="switchTab('analysis', this)">📊 Analysis</div>
+            </div>
+        </div>
+
+        <div class="panel-content">
+            <div id="view-controls" class="tab-view active">
+                <div class="control-group">
+                    <div class="section-title">Big Data Source</div>
+                    <div id="drop-zone" class="border-2 border-dashed border-gray-700 rounded-lg p-4 text-center hover:border-blue-500 hover:bg-blue-500/10 transition cursor-pointer">
+                        <div class="text-2xl mb-1">📂</div>
+                        <div class="text-xs text-gray-300">Drop JSON, ZIP, or .inowya</div>
+                        <input type="file" id="file-input" hidden accept=".json,.zip,.inowya">
+                    </div>
+                    <div class="flex gap-2 mt-2">
+                        <button onclick="exportData('gpx')" class="flex-1 py-1 bg-gray-700 hover:bg-gray-600 rounded text-[10px] border border-gray-600">GPX</button>
+                        <button onclick="exportData('kml')" class="flex-1 py-1 bg-gray-700 hover:bg-gray-600 rounded text-[10px] border border-gray-600">KML</button>
+                        <button onclick="exportData('geojson')" class="flex-1 py-1 bg-gray-700 hover:bg-gray-600 rounded text-[10px] border border-gray-600">JSON</button>
+                        <button onclick="exportCase()" class="flex-1 py-1 bg-purple-700 hover:bg-purple-600 rounded text-[10px] border border-gray-600">Case File</button>
+                    </div>
+                </div>
+
+                <div class="control-group bg-blue-900/10 border border-blue-500/20 p-3 rounded">
+                    <div class="section-title text-blue-300 mb-2">📅 Smart Date Filter</div>
+                    <input type="text" id="date-range" class="w-full bg-black/40 border border-gray-600 rounded p-2 text-sm text-white focus:border-blue-500 focus:outline-none" placeholder="Select date range...">
+                </div>
+
+                <div class="control-group">
+                    <div class="section-title mt-2">Detailed Map (Zoom 22+)</div>
+                    <select id="mapType" onchange="changeMapType()" class="mb-3">
+                        <option value="GoogleStreets">Google Streets (Addresses)</option>
+                        <option value="GoogleHybrid">Google Hybrid (Sat+Addr)</option>
+                        <option value="GoogleTraffic">Google Traffic (Live)</option>
+                        <option value="GoogleSat">Google Satellite</option>
+                        <option value="Dark">Carto Dark</option>
+                        <option value="Light">Carto Light</option>
+                    </select>
+                    <div class="flex justify-between items-center text-sm mb-2">
+                         <span class="text-gray-400 text-xs">Path Color</span>
+                         <input type="color" id="path-color" value="#3b82f6" onchange="updateStyles()">
+                    </div>
+                    <div class="flex justify-between items-center text-sm mb-2">
+                         <span class="text-gray-400 text-xs">Path Opacity</span>
+                         <input type="range" id="path-opacity" min="0.1" max="1" step="0.1" value="0.8" oninput="updateStyles()" class="w-24 accent-blue-500">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="section-title">Forensic Proximity Rings</div>
+                    <div class="flex gap-2 mb-2">
+                         <button onclick="toggleRings('home')" class="flex-1 bg-gray-800 text-xs py-1 rounded hover:bg-blue-600 border border-gray-600">🏠 Home (1km)</button>
+                         <button onclick="toggleRings('work')" class="flex-1 bg-gray-800 text-xs py-1 rounded hover:bg-blue-600 border border-gray-600">🏢 Work (1km)</button>
+                    </div>
+                    <div class="text-[9px] text-gray-500">Shows 100m, 500m, 1km rings. Click map to set custom center.</div>
+                </div>
+
+                <div class="control-group">
+                    <div class="section-title">Filters</div>
+                    <div class="mb-3">
+                        <label class="text-xs text-gray-400 block mb-1">Devices</label>
+                        <div id="device-list" class="filter-grid bg-black/20 rounded p-2 text-xs text-gray-500 italic">Load file...</div>
+                        <button onclick="toggleAllDevices()" class="text-[10px] text-blue-400 mt-1 hover:underline">Toggle All</button>
+                    </div>
+                    <div class="mb-3">
+                        <label class="text-xs text-gray-400 block mb-1">Activities</label>
+                        <div id="activity-list" class="filter-grid bg-black/20 rounded p-2 text-xs text-gray-500 italic">Load file...</div>
+                        <button onclick="toggleAllActivities()" class="text-[10px] text-blue-400 mt-1 hover:underline">Toggle All</button>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-gray-400">Max Accuracy Error</span>
+                            <span id="acc-val" class="text-blue-400">All</span>
+                        </div>
+                        <input type="range" id="acc-slider" min="0" max="5000" step="50" value="5000" oninput="updateLabel('acc-val', this.value, 'm'); fastUpdate()">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="section-title">Layers</div>
+                    <div class="mb-3">
+                        <label class="flex items-center gap-2 text-sm mb-1 cursor-pointer">
+                            <input type="checkbox" id="show-heat" checked onchange="toggleLayer('heat')">
+                            <span class="font-bold text-orange-400">Heatmap</span>
+                        </label>
+                        <div class="pl-5 grid grid-cols-2 gap-2">
+                            <div><span class="text-[10px] text-gray-500">Radius</span><input type="range" id="heat-radius" min="5" max="50" value="15" onchange="updateStyles()"></div>
+                            <div><span class="text-[10px] text-gray-500">Intensity</span><input type="range" id="heat-blur" min="10" max="60" value="20" onchange="updateStyles()"></div>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="flex items-center gap-2 text-sm cursor-pointer">
+                            <input type="checkbox" id="show-path" checked onchange="toggleLayer('path')">
+                            <span class="font-bold text-blue-400">Speed-Gradient Path</span>
+                        </label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="flex items-center gap-2 text-sm mb-1 cursor-pointer">
+                            <input type="checkbox" id="show-stops" checked onchange="toggleLayer('stops')">
+                            <span class="font-bold text-indigo-400">Stops (Detailed)</span>
+                        </label>
+                        <div class="pl-5">
+                             <div class="flex justify-between text-[10px] text-gray-500"><span>Min Duration</span><span id="stop-min-val">20 min</span></div>
+                             <input type="range" id="stop-duration" min="5" max="120" value="20" oninput="updateLabel('stop-min-val', this.value, ' min'); triggerStopCalc()">
+                             <div class="mt-2 pt-2 border-t border-gray-700">
+                                <button onclick="startEnrichment()" id="enrich-btn" class="w-full py-1.5 px-2 bg-indigo-900/50 hover:bg-indigo-800 border border-indigo-700 text-indigo-200 rounded text-xs transition flex items-center justify-center gap-2"><span>🌍 Enrich Addresses</span></button>
+                                <div id="enrich-progress" class="progress-bar"><div class="progress-fill"></div></div>
+                                <div id="enrich-status" class="enrich-status">Zoom map to area first</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-2"><label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" id="show-datapoints" onchange="toggleLayer('datapoints')"><span class="font-bold text-teal-400">Data Points (Cluster)</span></label></div>
+                    <div class="mb-2"><label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" id="show-pings" onchange="toggleLayer('pings')"><span class="font-bold text-green-400">Raw Pings (GPU/All)</span></label></div>
+                    <div class="mb-2"><label class="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" id="show-acc-overlay" onchange="toggleLayer('accOverlay')"><span class="font-bold text-red-400">Accuracy Overlay</span></label></div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <div class="bg-black/30 p-2 rounded text-center border border-white/5"><div id="stat-points" class="text-lg font-bold text-white">0</div><div class="text-[10px] text-gray-500">Points</div></div>
+                    <div class="bg-black/30 p-2 rounded text-center border border-white/5"><div id="stat-dist" class="text-lg font-bold text-white">0</div><div class="text-[10px] text-gray-500">Km Travelled</div></div>
+                </div>
+            </div>
+
+            <div id="view-analysis" class="tab-view">
+                <div class="card bg-blue-900/20 border-blue-500/30">
+                    <div class="section-title text-blue-300">📝 Evidence Export</div>
+                    <div class="flex gap-2">
+                        <button onclick="generateReport()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-1.5 rounded text-xs font-bold transition">View Report</button>
+                        <button onclick="exportCSV()" class="flex-1 bg-green-700 hover:bg-green-600 text-white py-1.5 rounded text-xs font-bold transition">Download CSV</button>
+                    </div>
+                    <div class="text-[9px] text-gray-400 mt-2 text-center">Generates summary of visible data & stops.</div>
+                </div>
+                
+                <div class="card bg-red-900/10 border-red-500/20">
+                    <div class="flex justify-between items-center mb-1">
+                        <h3 class="text-red-400">🚨 Anomalies & Gaps</h3>
+                        <button onclick="scanAnomalies()" class="text-[10px] border border-red-500 text-red-400 px-2 py-0.5 rounded hover:bg-red-500 hover:text-white">Scan</button>
+                    </div>
+                    <div id="anomaly-list" class="h-32 overflow-y-auto text-xs mt-2 text-gray-500 italic">Click scan to find teleportation & gaps...</div>
+                </div>
+
+                <div class="card">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3>📍 Top Locations</h3>
+                        <select id="top-loc-count" onchange="renderTopLocations()" class="w-20 py-0 text-xs bg-gray-700 border-none rounded">
+                            <option value="5">Top 5</option>
+                            <option value="10">Top 10</option>
+                            <option value="50">Top 50</option>
+                            <option value="100" selected>Top 100</option>
+                        </select>
+                    </div>
+                    <input id="addr-filter" type="text" placeholder="🔍 Filter by name or address" class="w-full mb-2 px-2 py-1 text-xs bg-black/40 border border-gray-600 rounded">
+                    <div class="mb-3 px-1">
+                        <div class="flex justify-between text-[10px] text-gray-500 mb-1"><span>Merge Radius</span><span id="merge-val" class="text-blue-300">80m</span></div>
+                        <input type="range" id="merge-radius" min="10" max="500" value="80" oninput="updateLabel('merge-val', this.value, 'm'); renderTopLocations()">
+                    </div>
+                    <div id="top-locations" class="h-64 overflow-y-auto text-xs space-y-1 pr-1"></div>
+                </div>
+                
+                <div id="visit-details-panel" class="card hidden">
+                     <div class="flex justify-between items-center mb-2">
+                        <h3 id="visit-dates-title">Detailed Visits</h3>
+                        <button onclick="document.getElementById('visit-details-panel').classList.add('hidden')" class="text-xs text-red-400">Close</button>
+                     </div>
+                     <div id="visit-list" class="h-48 overflow-y-auto pr-1"></div>
+                </div>
+
+                <div class="card">
+                    <h3>🏃 Activity & Movement</h3>
+                    <div id="activity-chart-container" class="h-48 flex justify-center items-center"></div>
+                </div>
+                <div class="card">
+                    <h3>📅 Yearly Heatmap</h3>
+                    <div class="text-[10px] text-gray-500 mb-2">Click square to replay that day.</div>
+                    <div id="cal-heatmap" class="w-full h-48 overflow-x-auto"></div>
+                </div>
+            </div>
+        </div>
+        <div class="resize-handle"></div>
+    </div>
+
+    <script id="worker-code" type="javascript/worker">
+        importScripts('https://unpkg.com/dexie@latest/dist/dexie.js');
+        const db = new Dexie("InowyaStore");
+        db.version(1).stores({ points: "++id, ts, act, dev, [lat+lng], spd, acc, alt" });
+
+        self.onmessage = async function(e) {
+            const { file, type, content, settingsContent } = e.data;
+            let deviceMap = {};
+            if(settingsContent) { try { const s = JSON.parse(settingsContent); if(s.deviceSettings) s.deviceSettings.forEach(d => { if(d.deviceTag && d.devicePrettyName) deviceMap[d.deviceTag] = d.devicePrettyName; }); } catch(e){} }
+
+            if (type === 'recalc_stops') {
+                 const { points, minDurationMin } = e.data;
+                 const stops = calculateStops(points, minDurationMin);
+                 self.postMessage({ status: 'stops_calculated', stops: stops });
+                 return;
+            }
+
+            await db.points.clear();
+            if (type === 'json' || type === 'json_string') {
+                 let json;
+                 self.postMessage({ status: 'loading_progress', percent: 0, msg: "Reading JSON..." });
+                 if(type === 'json') { const text = await file.text(); json = JSON.parse(text); } 
+                 else { json = JSON.parse(content); }
+                 processAndStream(json, deviceMap);
+            }
+
+            async function processAndStream(json, devMap) {
+                let buffer = [];
+                const extractPoint = (pt) => {
+                    if (typeof pt === 'object' && pt.latitudeE7) return { lat: pt.latitudeE7/1e7, lng: pt.longitudeE7/1e7, alt: pt.altitude||0, acc: pt.accuracy||0 };
+                    if (typeof pt === 'object' && pt.lat) return { lat: parseFloat(pt.lat), lng: parseFloat(pt.lng), alt: pt.alt||0, acc: pt.acc||0 };
+                    return null;
+                };
+                
+                let itemsToProcess = [];
+                if (json.timelineObjects) itemsToProcess = json.timelineObjects;
+                else if (json.locations) itemsToProcess = json.locations;
+                else { if(Array.isArray(json)) itemsToProcess = json; }
+                
+                if(!itemsToProcess || !itemsToProcess.length) { self.postMessage({ status: 'error', msg: "No valid location data found." }); return; }
+                
+                await chunkLoop(itemsToProcess, (item) => {
+                     const obj = item.activitySegment || item.placeVisit || item;
+                     if (obj.timelinePath) {
+                         obj.timelinePath.forEach(p => {
+                             const c = extractPoint(p.point);
+                             if(c) buffer.push({lat:c.lat, lng:c.lng, alt:c.alt, acc:c.acc, ts: new Date(p.time).getTime(), spd:0, act: obj.activityType || 'MOVING', dev:'Mobile'});
+                         });
+                     } else if (obj.location) { 
+                         const c = extractPoint(obj.location);
+                         if(c) buffer.push({lat:c.lat, lng:c.lng, alt:c.alt, acc:c.acc, ts: obj.duration?new Date(obj.duration.startTimestamp).getTime():0, spd:0, act:'STATIONARY', dev:'Visit'});
+                     } else if (item.timestampMs || item.time) { 
+                        const c = extractPoint(item);
+                        const devTag = item.deviceTag ? (devMap[item.deviceTag] || item.deviceTag) : "Unknown Device";
+                        if(c) buffer.push({lat: c.lat, lng: c.lng, alt: c.alt||0, ts: parseInt(item.timestampMs) || new Date(item.time).getTime(), spd: item.velocity||0, acc: item.accuracy||0, act: item.activity?item.activity[0].activity[0].type:'UNKNOWN', dev: devTag});
+                     }
+                }, 5000, "Extracting Points...");
+
+                self.postMessage({ status: 'loading_progress', percent: 100, msg: "Sorting..." });
+                buffer.sort((a,b) => a.ts - b.ts);
+                
+                await chunkLoop(buffer, (p2, i) => {
+                    if(i === 0) return;
+                    const p1 = buffer[i-1];
+                    const R=6371000; const dLat=(p2.lat-p1.lat)*Math.PI/180; const dLon=(p2.lng-p1.lng)*Math.PI/180;
+                    const a=Math.sin(dLat/2)**2+Math.cos(p1.lat*Math.PI/180)*Math.cos(p2.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+                    const dist=R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+                    const dt=(p2.ts-p1.ts)/1000;
+                    if(dt>0 && dist>0) { const spd = dist/dt; if(spd < 300) { p2.spd = spd; p2.d_dist = dist; } }
+                }, 10000, "Analyzing Speed...");
+
+                streamToDB(buffer);
+            }
+            
+            function chunkLoop(array, processFn, chunkSize, statusLabel) {
+                return new Promise(resolve => {
+                    let i = 0;
+                    function next() {
+                        const end = Math.min(i + chunkSize, array.length);
+                        for (; i < end; i++) { processFn(array[i], i); }
+                        const pct = Math.round((i / array.length) * 100);
+                        self.postMessage({ status: 'loading_progress', percent: pct, msg: statusLabel });
+                        if (i < array.length) { setTimeout(next, 0); } else { resolve(); }
+                    } next();
+                });
+            }
+
+            async function streamToDB(points) {
+                const chunkSize = 5000;
+                const inferred = analyzeLifeSegments(points);
+                const activities = new Set(); const devices = new Set(); const dates = new Set();
+                points.forEach(p => { if(p.act) activities.add(p.act); if(p.dev) devices.add(p.dev); dates.add(new Date(p.ts).toISOString().split('T')[0]); });
+                for (let i = 0; i < points.length; i += chunkSize) {
+                    await db.points.bulkAdd(points.slice(i, i + chunkSize));
+                    self.postMessage({ status: 'loading_progress', percent: Math.round((i/points.length)*100), msg: "Saving to DB..." });
+                }
+                self.postMessage({ status: 'parsed', points: points, activities: Array.from(activities).sort(), devices: Array.from(devices).sort(), availableDates: Array.from(dates).sort(), inferred: inferred });
+            }
+
+            function analyzeLifeSegments(points) {
+                 const grid = {}; points.forEach(p => { if(p.act === 'STATIONARY') { const k = p.lat.toFixed(3)+','+p.lng.toFixed(3); if(!grid[k]) grid[k] = {lat:p.lat, lng:p.lng, score:0}; const h = new Date(p.ts).getHours(); if(h<6 || h>22) grid[k].score++; } });
+                 let best = null; let max = 0; Object.values(grid).forEach(g => { if(g.score > max) { max = g.score; best = g; }}); return best ? { home: best } : { home: null };
+            }
+
+            function calculateStops(points, minMins) {
+                 const stops = []; if(!points.length) return []; let start = points[0]; let curr = points[0];
+                 for(let i=1; i<points.length; i++) {
+                     const p = points[i]; const dist = Math.sqrt((p.lat-start.lat)**2 + (p.lng-start.lng)**2); 
+                     if(dist > 0.0005) { const dur = curr.ts - start.ts; if(dur > minMins*60000) stops.push({lat:start.lat, lng:start.lng, arrival:start.ts, departure:curr.ts, duration:dur}); start = p; }
+                     curr = p;
+                 } return stops;
+            }
+        };
+    </script>
+
+    <script>
+        const db = new Dexie("InowyaStore");
+        db.version(1).stores({ points: "++id, ts, act, dev, [lat+lng], spd, acc, alt" });
+
+        let map, worker, picker;
+        let tileLayers = {};
+        // layerGroups
+        let layerGroups = { path: null, stops: null, heat: null, anim: null, rings: null, proximity: null, datapoints: null, pings: null, highlight: null, accOverlay: null };
+        let glifyLayer = null; 
+
+        let allPoints = [], currentStops = [], availableDates = [], currentViewPoints = [];
+        let inferredLocs = { home: null };
+        let addressCache = JSON.parse(localStorage.getItem('inowya_addr_cache') || '{}');
+        let annotations = JSON.parse(localStorage.getItem('inowya_notes') || '{}');
+        let animTimer = null, isPlaying = false, animIndex = 0, animSpeed = 0.1;
+        let myRenderer;
+        let hasInitialZoom = false;
+        let activeTab = 'controls';
+        
+        let currentMergeRadius = 80;
+        let topLocationsData = [];
+
+        // SHORT LIST FOR PERFORMANCE (Full list in real DB)
+        const cities = [{"name":"New York City","lat":40.7128,"lon":-74.0060},{"name":"Los Angeles","lat":34.0522,"lon":-118.2437},{"name":"Chicago","lat":41.8781,"lon":-87.6298},{"name":"Houston","lat":29.7604,"lon":-95.3698},{"name":"Phoenix","lat":33.4484,"lon":-112.0740},{"name":"Philadelphia","lat":39.9526,"lon":-75.1652},{"name":"San Antonio","lat":29.4241,"lon":-98.4936},{"name":"San Diego","lat":32.7157,"lon":-117.1611},{"name":"Dallas","lat":32.7767,"lon":-96.7970},{"name":"San Jose","lat":37.3382,"lon":-121.8863},{"name":"Austin","lat":30.2672,"lon":-97.7431},{"name":"San Francisco","lat":37.7749,"lon":-122.4194},{"name":"Seattle","lat":47.6062,"lon":-122.3321},{"name":"Denver","lat":39.7392,"lon":-104.9903},{"name":"Washington","lat":38.9072,"lon":-77.0369},{"name":"Boston","lat":42.3601,"lon":-71.0589},{"name":"Las Vegas","lat":36.1699,"lon":-115.1398},{"name":"Miami","lat":25.7617,"lon":-80.1918},{"name":"Atlanta","lat":33.7490,"lon":-84.3880},{"name":"London","lat":51.5074,"lon":-0.1278},{"name":"Paris","lat":48.8566,"lon":2.3522},{"name":"Tokyo","lat":35.6895,"lon":139.6917}];
+
+        function quickCity(lat,lon){
+            let best = null, d = 99999;
+            for(const c of cities){
+                const dist = (c.lat-lat)**2 + (c.lon-lon)**2;
+                if(dist<d){ d=dist; best=c; }
+            }
+            return best && d < 0.5 ? `${best.name}` : null;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initMap();
+            initWorker();
+            initUI();
+            makeDraggable(document.getElementById('floating-panel'));
+        });
+
+        function initMap() {
+            map = L.map('map', { zoomControl: false, preferCanvas: true, maxZoom: 22 }).setView([34.0522, -118.2437], 10);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+            
+            tileLayers.GoogleStreets = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { attribution: 'Google', maxZoom: 22 });
+            tileLayers.GoogleTraffic = L.tileLayer('https://mt1.google.com/vt/lyrs=m,traffic&x={x}&y={y}&z={z}', { attribution: 'Google', maxZoom: 22 });
+            tileLayers.GoogleHybrid = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { attribution: 'Google', maxZoom: 22 });
+            tileLayers.GoogleSat = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', { attribution: 'Google', maxZoom: 22 });
+            tileLayers.Dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: 'CARTO' });
+            tileLayers.Light = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: 'CARTO' });
+
+            tileLayers.GoogleStreets.addTo(map); 
+            myRenderer = L.canvas({ padding: 0.5 });
+            
+            layerGroups.heat = L.heatLayer([], { radius: 15, blur: 20 }).addTo(map);
+            layerGroups.path = L.layerGroup().addTo(map);
+            layerGroups.stops = L.markerClusterGroup({ disableClusteringAtZoom: 16 }).addTo(map);
+            layerGroups.anim = L.layerGroup().addTo(map);
+            layerGroups.rings = L.layerGroup().addTo(map);
+            layerGroups.datapoints = L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 40 });
+            // layerGroups.pings is handled by glify
+            layerGroups.pings = L.layerGroup(); 
+            layerGroups.highlight = L.layerGroup().addTo(map);
+            layerGroups.accOverlay = L.layerGroup();
+            
+            map.on('click', function(e) {
+                if(!currentViewPoints.length) return;
+                let closest = null, minDist = Infinity;
+                const step = currentViewPoints.length > 50000 ? 5 : 1;
+                for(let i=0; i<currentViewPoints.length; i+=step) {
+                    const p = currentViewPoints[i];
+                    const d = Math.pow(p.lat-e.latlng.lat, 2) + Math.pow(p.lng-e.latlng.lng, 2);
+                    if(d < minDist) { minDist=d; closest=p; }
+                }
+                
+                if(closest && minDist < 0.0001) { 
+                    const d = new Date(closest.ts);
+                    const k = `${closest.lat.toFixed(4)},${closest.lng.toFixed(4)}`;
+                    const existingNote = annotations[k] || '';
+                    
+                    const popupContent = document.createElement('div');
+                    popupContent.className = "text-gray-800 text-sm w-48";
+                    popupContent.innerHTML = `
+                        <b>${d.toDateString()}</b><br>
+                        Time: ${d.toLocaleTimeString()}<br>
+                        Speed: ${(closest.spd * 3.6).toFixed(1)} km/h<br>
+                        Acc: ${closest.acc}m<br>
+                        <div class="mt-2 border-t pt-1">
+                            <input type="text" id="note-input" value="${existingNote}" placeholder="Add forensic note..." class="w-full text-xs border p-1 mb-1 rounded text-black">
+                            <button id="save-note-btn" class="w-full bg-blue-600 text-white text-xs py-1 rounded">Save Note</button>
+                        </div>
+                    `;
+                    
+                    const popup = L.popup().setLatLng([closest.lat, closest.lng]).setContent(popupContent).openOn(map);
+                    
+                    setTimeout(() => {
+                        const btn = document.getElementById('save-note-btn');
+                        if(btn) btn.onclick = () => {
+                            const txt = document.getElementById('note-input').value;
+                            if(txt) {
+                                annotations[k] = txt;
+                                localStorage.setItem('inowya_notes', JSON.stringify(annotations));
+                                alert('Note saved!');
+                                map.closePopup();
+                            }
+                        };
+                    }, 100);
+
+                } else {
+                    L.popup().setLatLng(e.latlng).setContent('<button onclick="setProximityCenter(' + e.latlng.lat + ',' + e.latlng.lng + ')" class="text-blue-600 underline">Set Proximity Center</button>').openOn(map);
+                }
+            });
+        }
+        
+        function setProximityCenter(lat, lng) {
+            layerGroups.rings.clearLayers();
+            [100, 500, 1000].forEach(r => {
+                L.circle([lat, lng], { radius: r, fill: false, color: '#facc15', dashArray: '5, 5', weight: 1 }).addTo(layerGroups.rings);
+            });
+            map.closePopup();
+        }
+
+        function initWorker() {
+            const blob = new Blob([document.getElementById('worker-code').textContent], { type: "text/javascript" });
+            worker = new Worker(window.URL.createObjectURL(blob));
+            worker.onmessage = function(e) {
+                const data = e.data;
+                if(data.status === 'loading_progress') {
+                    document.getElementById('loading-percent').innerText = data.percent + '%';
+                    document.getElementById('loading-msg').innerText = data.msg;
+                }
+                if(data.status === 'parsed') {
+                    allPoints = data.points;
+                    availableDates = data.availableDates;
+                    inferredLocs = data.inferred;
+                    setupDatePicker(availableDates);
+                    generateFilters(data.activities, 'activity-list', 'act-cb');
+                    generateFilters(data.devices, 'device-list', 'dev-cb');
+                    document.getElementById('stat-points').innerText = allPoints.length.toLocaleString();
+                    renderCalendarHeatmap();
+                    triggerStopCalc();
+                    hideLoading();
+                    hasInitialZoom = false; 
+                }
+                if(data.status === 'stops_calculated') {
+                    currentStops = data.stops;
+                    updateMapVisualization();
+                }
+                if(data.status === 'error') { hideLoading(); alert(data.msg); }
+            };
+        }
+
+        function getSpeedColor(spd) { const kmh = spd * 3.6; if (kmh < 5) return '#3b82f6'; if (kmh < 25) return '#10b981'; if (kmh < 80) return '#eab308'; return '#ef4444'; }
+
+        function drawAccOverlay() {
+            layerGroups.accOverlay.clearLayers();
+            const step = currentViewPoints.length > 50000 ? 5 : 1;
+            for(let i=0; i<currentViewPoints.length; i+=step) {
+                const p = currentViewPoints[i];
+                if(p.acc > 20) { 
+                    L.circle([p.lat, p.lng], {
+                        radius: p.acc,
+                        color: 'transparent',
+                        fillColor: '#ef4444',
+                        fillOpacity: 0.1,
+                        renderer: myRenderer,
+                        interactive: false
+                    }).addTo(layerGroups.accOverlay);
+                }
+            }
+        }
+
+        function updateMapVisualization() {
+            if(!allPoints.length) return;
+            const dateRange = document.getElementById('date-range')._flatpickr.selectedDates;
+            const checkedActs = new Set(Array.from(document.querySelectorAll('.act-cb:checked')).map(c => c.value));
+            const checkedDevs = new Set(Array.from(document.querySelectorAll('.dev-cb:checked')).map(c => c.value));
+            const accMax = parseInt(document.getElementById('acc-slider').value);
+            
+            let viewPoints = allPoints.filter(p => p.acc <= accMax && checkedActs.has(p.act) && (p.dev === undefined || checkedDevs.has(p.dev)));
+            if(dateRange.length === 2) { const start = dateRange[0].setHours(0,0,0,0); const end = dateRange[1].setHours(23,59,59,999); viewPoints = viewPoints.filter(p => p.ts >= start && p.ts <= end); }
+            currentViewPoints = viewPoints;
+
+            layerGroups.path.clearLayers();
+            // Get transparency value from slider
+            const pathOp = parseFloat(document.getElementById('path-opacity').value);
+
+            if(document.getElementById('show-path').checked && viewPoints.length > 1) {
+                const step = viewPoints.length > 50000 ? 2 : 1;
+                for(let i=step; i<viewPoints.length; i+=step) {
+                    const p1 = viewPoints[i-step]; const p2 = viewPoints[i]; if(Math.abs(p2.lat - p1.lat) > 0.05) continue; 
+                    L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], { 
+                        color: getSpeedColor(p2.spd), 
+                        weight: 3, 
+                        opacity: pathOp, // Applied here
+                        renderer: myRenderer 
+                    }).addTo(layerGroups.path);
+                }
+            }
+            if(document.getElementById('show-heat').checked) layerGroups.heat.setLatLngs(viewPoints.map(p => [p.lat, p.lng, 0.5])); else layerGroups.heat.setLatLngs([]);
+            layerGroups.stops.clearLayers();
+            if(document.getElementById('show-stops').checked) {
+                currentStops.forEach(s => {
+                    if(s.arrival >= (dateRange[0] || 0) && s.departure <= (dateRange[1] || 9999999999999)) {
+                        const dStart = new Date(s.arrival); const dEnd = new Date(s.departure); const dur = (s.duration/60000).toFixed(0);
+                        const k = `${s.lat.toFixed(4)},${s.lng.toFixed(4)}`; 
+                        const addr = addressCache[k] || "<i>(Click Enrich)</i>";
+                        const note = annotations[k] ? `<div class="mt-1 text-red-500 font-bold">📝 ${annotations[k]}</div>` : '';
+                        
+                        layerGroups.stops.addLayer(L.circleMarker([s.lat,s.lng], {radius:6, color:'#6366f1'}).bindPopup(`<div class="text-sm"><div class="font-bold border-b border-gray-400 mb-1">${addr}</div><div class="text-blue-600 font-bold">${dStart.toDateString()}</div><div class="text-xs text-gray-300 font-mono">${dStart.toLocaleTimeString()} - ${dEnd.toLocaleTimeString()}</div><div class="mt-1 text-xs text-gray-500">Duration: ${dur} min</div>${note}</div>`));
+                    }
+                });
+            }
+            
+            layerGroups.datapoints.clearLayers();
+            if(document.getElementById('show-datapoints').checked) { const pSub = viewPoints.length>50000?viewPoints.filter((_,i)=>i%5===0):viewPoints; pSub.forEach(p=>{ layerGroups.datapoints.addLayer(L.circleMarker([p.lat,p.lng],{radius:2,color:'#10b981',fillColor:'#10b981',fillOpacity:0.8})); }); if(!map.hasLayer(layerGroups.datapoints)) map.addLayer(layerGroups.datapoints); } else { if(map.hasLayer(layerGroups.datapoints)) map.removeLayer(layerGroups.datapoints); }
+            
+            // GPU Rendering for Raw Pings
+            if (glifyLayer) { glifyLayer.remove(); glifyLayer = null; }
+            if (document.getElementById('show-pings').checked) {
+                glifyLayer = L.glify.points({
+                    map: map,
+                    data: viewPoints.map(p => [p.lat, p.lng]),
+                    size: 3,
+                    color: { r: 0.13, g: 0.77, b: 0.37, a: 0.8 }, 
+                    opacity: 0.8,
+                    // DISABLED: Pass through to map.on('click') for Note logic
+                    click: (e, point, xy) => { }, 
+                    sensitivity: 3
+                });
+            }
+
+            layerGroups.accOverlay.clearLayers();
+            if(document.getElementById('show-acc-overlay').checked){
+                if(!map.hasLayer(layerGroups.accOverlay)) map.addLayer(layerGroups.accOverlay);
+                drawAccOverlay();
+            } else {
+                if(map.hasLayer(layerGroups.accOverlay)) map.removeLayer(layerGroups.accOverlay);
+            }
+
+            if(!hasInitialZoom && viewPoints.length > 0) { map.fitBounds(L.latLngBounds(viewPoints.map(p=>[p.lat,p.lng]))); hasInitialZoom = true; }
+            if(activeTab === 'analysis') { refreshAnalysis(); }
+        }
+
+        function scanAnomalies() {
+            const list = document.getElementById('anomaly-list');
+            list.innerHTML = '';
+            let found = 0;
+            
+            for(let i=1; i<currentViewPoints.length; i++) {
+                const p = currentViewPoints[i];
+                if((p.spd * 3.6) > 800) { 
+                    const d = document.createElement('div');
+                    d.className = 'anomaly-item';
+                    d.innerHTML = `🚀 <b>Teleport?</b> ${(p.spd*3.6).toFixed(0)} km/h @ ${new Date(p.ts).toLocaleString()}`;
+                    d.onclick = () => { map.setView([p.lat, p.lng], 15); L.popup().setLatLng([p.lat,p.lng]).setContent("Possible Teleport/GPS Error").openOn(map); };
+                    list.appendChild(d);
+                    found++;
+                }
+            }
+            
+            for(let i=1; i<currentViewPoints.length; i++) {
+                const diff = currentViewPoints[i].ts - currentViewPoints[i-1].ts;
+                if(diff > 86400000) { 
+                    const d = document.createElement('div');
+                    d.className = 'gap-item';
+                    d.innerHTML = `⏳ <b>Gap:</b> ${(diff/3600000).toFixed(1)} hrs missing after ${new Date(currentViewPoints[i-1].ts).toLocaleDateString()}`;
+                    d.onclick = () => { map.setView([currentViewPoints[i-1].lat, currentViewPoints[i-1].lng], 10); };
+                    list.appendChild(d);
+                    found++;
+                }
+            }
+            
+            if(found===0) list.innerHTML = '<div class="text-green-400 p-2">No anomalies detected in current view.</div>';
+        }
+
+        function syncLists(p) {
+            const list = document.getElementById('top-locations');
+            const items = list.querySelectorAll('.top-loc-item');
+            items.forEach(i => i.classList.remove('active-highlight'));
+            const vList = document.getElementById('visit-list');
+            if(vList) {
+                const vItems = vList.querySelectorAll('.visit-item');
+                vItems.forEach(i => i.classList.remove('active-highlight'));
+            }
+        }
+
+        function toggleAnimation() { isPlaying=!isPlaying; document.getElementById('anim-play').innerText=isPlaying?'⏸':'▶'; if(isPlaying) animate(); }
+        
+        function animate() { 
+             if(!isPlaying || !currentViewPoints.length) return;
+             
+             if(animIndex % 20 === 0) {
+                 const p = currentViewPoints[Math.floor(animIndex)];
+                 const key = `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+                 document.querySelectorAll('.active-highlight').forEach(el => el.classList.remove('active-highlight'));
+                 const listItem = document.querySelector(`[data-loc-key="${key}"]`);
+                 if(listItem) {
+                     listItem.classList.add('active-highlight');
+                     listItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                 }
+             }
+
+             const pCurr = currentViewPoints[Math.floor(animIndex)];
+             if(Math.abs(animSpeed) > 5 && pCurr && pCurr.act === 'STATIONARY') { document.getElementById('skip-indicator').classList.add('visible'); animIndex += (animSpeed * 5); } 
+             else { document.getElementById('skip-indicator').classList.remove('visible'); animIndex += animSpeed; }
+             
+             if(animIndex >= currentViewPoints.length) animIndex = 0; if(animIndex < 0) animIndex = currentViewPoints.length - 1;
+             
+             const p = currentViewPoints[Math.floor(animIndex)];
+             layerGroups.anim.clearLayers();
+             L.circleMarker([p.lat,p.lng],{radius:10, color:'#ef4444', fillColor:'#ef4444', fillOpacity:0.4}).addTo(layerGroups.anim);
+             L.circleMarker([p.lat,p.lng],{radius:4, color:'white', fill:true, fillColor:'white', fillOpacity:1}).addTo(layerGroups.anim);
+             
+             document.getElementById('anim-time').innerText = new Date(p.ts).toLocaleTimeString();
+             document.getElementById('anim-slider').value = (animIndex/currentViewPoints.length)*10000;
+             requestAnimationFrame(animate);
+        }
+        
+        function stepFrame(dir) {
+            if(!currentViewPoints.length) return;
+            isPlaying = false; document.getElementById('anim-play').innerText='▶';
+            animIndex += dir;
+            if(animIndex < 0) animIndex = 0;
+            if(animIndex >= currentViewPoints.length) animIndex = currentViewPoints.length - 1;
+            
+            const p = currentViewPoints[Math.floor(animIndex)];
+            layerGroups.anim.clearLayers();
+            L.circleMarker([p.lat,p.lng],{radius:10, color:'#ef4444', fillColor:'#ef4444', fillOpacity:0.4}).addTo(layerGroups.anim);
+            L.circleMarker([p.lat,p.lng],{radius:4, color:'white', fill:true, fillColor:'white', fillOpacity:1}).addTo(layerGroups.anim);
+            document.getElementById('anim-time').innerText = new Date(p.ts).toLocaleTimeString();
+            document.getElementById('anim-slider').value = (animIndex/currentViewPoints.length)*10000;
+            map.panTo([p.lat, p.lng]);
+            syncListHighlight(p);
+        }
+        
+        function syncListHighlight(p) {
+            const key = `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+            document.querySelectorAll('.active-highlight').forEach(el => el.classList.remove('active-highlight'));
+        }
+
+        function seekAnimation(v) { 
+            animIndex = Math.floor((v/10000)*currentViewPoints.length); 
+            if(!isPlaying) stepFrame(0); 
+        }
+
+        function updateSpeed() { animSpeed = parseFloat(document.getElementById('anim-speed').value); }
+        function hideLoading() { document.getElementById('loading').style.display='none'; }
+        
+        const dz=document.getElementById('drop-zone'); const inp=document.getElementById('file-input');
+        dz.onclick=()=>inp.click(); inp.onchange=e=>loadFile(e.target.files[0]);
+        dz.ondragover=e=>{e.preventDefault(); e.stopPropagation();}; dz.ondrop=e=>{e.preventDefault(); loadFile(e.dataTransfer.files[0]);};
+        
+        function toggleAllDevices() { document.querySelectorAll('.dev-cb').forEach(c=>c.checked=!c.checked); fastUpdate(); }
+        function toggleAllActivities() { document.querySelectorAll('.act-cb').forEach(c=>c.checked=!c.checked); fastUpdate(); }
+        async function startEnrichment() { /* Placeholder */ }
+        
+        function renderTopLocations() { 
+            const list = document.getElementById('top-locations'); list.innerHTML = '';
+            if(!currentStops.length) return list.innerHTML = '<div class="text-gray-500 p-2">No stops visible</div>';
+            
+            const limit = parseInt(document.getElementById('top-loc-count').value);
+            const mergeRadius = parseInt(document.getElementById('merge-radius').value);
+            
+            const merged = [];
+            const getDistM = (lat1, ln1, lat2, ln2) => { const R = 6371e3; const dLat = (lat2-lat1)*Math.PI/180; const dLon = (ln2-ln1)*Math.PI/180; const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2; return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); };
+
+            currentStops.forEach(s => {
+                const k = `${s.lat.toFixed(4)},${s.lng.toFixed(4)}`;
+                let m = merged.find(x => getDistM(x.lat, x.lng, s.lat, s.lng) < mergeRadius);
+                if(m) { m.count++; m.duration += s.duration; m.visits.push(s); }
+                else { merged.push({ lat: s.lat, lng: s.lng, count: 1, duration: s.duration, key: k, visits: [s] }); }
+            });
+
+            merged.sort((a,b)=>b.duration-a.duration);
+            topLocationsData = merged; 
+
+            buildSearchIndex();
+
+            merged.slice(0,limit).forEach((l,i) => {
+                const d = document.createElement('div'); d.className='top-loc-item';
+                const addr = addressCache[l.key] || quickCity(l.lat,l.lng) || `Loc ${l.lat.toFixed(3)},${l.lng.toFixed(3)}`;
+                const hasNote = annotations[l.key] ? '📝' : '';
+                d.innerHTML = `<span class="font-bold text-gray-500 mr-2">#${i+1}</span><span title="${addr}" class="truncate w-32">${hasNote} ${addr}</span><span class="text-blue-400 font-bold ml-auto">${(l.duration/3600000).toFixed(1)}h</span>`;
+                d.onclick = () => { map.flyTo([l.lat,l.lng], 16); showLocationVisits(l); };
+                d.setAttribute('data-loc-key', l.key);
+                list.appendChild(d);
+            });
+        }
+
+        let addrIndex = [];
+        function buildSearchIndex(){
+            addrIndex = topLocationsData.map(l => ({
+                key: l.key,
+                text: (addressCache[l.key]||'').toLowerCase(),
+                obj: l
+            }));
+        }
+        document.getElementById('addr-filter').addEventListener('input', e => {
+            const q = e.target.value.toLowerCase();
+            document.querySelectorAll('.top-loc-item').forEach(item => {
+                const key = item.dataset.locKey;
+                const match = addrIndex.find(x => x.key === key);
+                item.style.display = !q || (match && match.text.includes(q)) ? 'flex' : 'none';
+            });
+        });
+
+        function exportCSV() {
+            if(!topLocationsData.length) return alert("No locations to export.");
+            let csv = "Rank,Location,Latitude,Longitude,Total Duration (Hours),Visit Count,Note,First Visit,Last Visit\n";
+            topLocationsData.forEach((l, i) => {
+                const addr = (addressCache[l.key] || quickCity(l.lat,l.lng) || "Unknown").replace(/,/g, " ");
+                const note = (annotations[l.key] || "").replace(/,/g, " ");
+                const first = new Date(Math.min(...l.visits.map(v=>v.arrival))).toISOString();
+                const last = new Date(Math.max(...l.visits.map(v=>v.departure))).toISOString();
+                csv += `${i+1},${addr},${l.lat},${l.lng},${(l.duration/3600000).toFixed(2)},${l.count},${note},${first},${last}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'inowya_dossier.csv'; a.click();
+        }
+
+        async function exportCase(){
+            if(!allPoints.length) return alert("No data to bundle.");
+            const zip = new JSZip();
+            zip.file("track.json", JSON.stringify(currentViewPoints));
+            zip.file("addresses.json", JSON.stringify(addressCache));
+            zip.file("notes.json", JSON.stringify(annotations));
+            zip.file("meta.json", JSON.stringify({
+                generated: new Date().toISOString(),
+                totalPoints: allPoints.length,
+                top50: topLocationsData.slice(0,50),
+                inferred: inferredLocs
+            }, null, 2));
+            const blob = await zip.generateAsync({type:"blob"});
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = "case_"+new Date().toISOString().split('T')[0]+".inowya"; a.click();
+        }
+
+        function generateReport() {
+            if(!topLocationsData.length) return alert("No data for report.");
+            const w = window.open("", "Report", "width=800,height=900");
+            const dateRange = document.getElementById('date-range')._flatpickr.selectedDates;
+            const rangeStr = dateRange.length === 2 ? `${dateRange[0].toDateString()} - ${dateRange[1].toDateString()}` : "All Time";
+            
+            let html = `
+                <html><head><title>Forensic Report</title>
+                <style>body{font-family:sans-serif;padding:20px;color:#333} h1{color:#2563eb} table{width:100%;border-collapse:collapse;margin-top:20px} th,td{border:1px solid #ddd;padding:8px;text-align:left} th{background:#f3f4f6} .header{margin-bottom:20px;padding-bottom:10px;border-bottom:2px solid #2563eb}</style>
+                </head><body>
+                <div class="header">
+                    <h1>INOWYA Forensic Report</h1>
+                    <p><b>Generated:</b> ${new Date().toLocaleString()}</p>
+                    <p><b>Date Filter:</b> ${rangeStr}</p>
+                    <p><b>Total Points Processed:</b> ${allPoints.length.toLocaleString()}</p>
+                </div>
+                <h2>Top Locations Summary</h2>
+                <table>
+                    <tr><th>Rank</th><th>Location (Enriched)</th><th>Notes</th><th>Coords</th><th>Total Time</th><th>Visits</th></tr>
+            `;
+            
+            topLocationsData.slice(0, 50).forEach((l, i) => {
+                const addr = addressCache[l.key] || quickCity(l.lat,l.lng) || "Unknown";
+                const note = annotations[l.key] || "";
+                html += `<tr>
+                    <td>${i+1}</td>
+                    <td>${addr}</td>
+                    <td style="color:red">${note}</td>
+                    <td>${l.lat.toFixed(5)}, ${l.lng.toFixed(5)}</td>
+                    <td>${(l.duration/3600000).toFixed(1)} hrs</td>
+                    <td>${l.count}</td>
+                </tr>`;
+            });
+            
+            html += `</table><div style="margin-top:20px;font-size:10px;color:#666">Generated by INOWYA Vx.3.8</div></body></html>`;
+            w.document.write(html);
+            w.document.close();
+        }
+
+        function showLocationVisits(locData) {
+             const panel = document.getElementById('visit-details-panel');
+             const list = document.getElementById('visit-list');
+             panel.classList.remove('hidden'); list.innerHTML = '';
+             document.getElementById('visit-dates-title').innerText = `Visits: ${addressCache[locData.key] || 'Location'}`;
+             
+             locData.visits.sort((a,b)=>b.arrival-a.arrival).forEach(v => {
+                 const d = document.createElement('div'); d.className='visit-item';
+                 const dt = new Date(v.arrival);
+                 d.innerHTML = `<div>${dt.toDateString()}</div><div class="text-gray-500">${dt.toLocaleTimeString()} (${(v.duration/60000).toFixed(0)}m)</div>`;
+                 d.onclick = () => { 
+                     const idx = currentViewPoints.findIndex(p => p.ts >= v.arrival);
+                     if(idx !== -1) { seekAnimation( (idx / currentViewPoints.length)*10000 ); toggleAnimation(); }
+                 };
+                 list.appendChild(d);
+             });
+        }
+
+        function renderCalendarHeatmap() { 
+             const c=document.getElementById('cal-heatmap'); c.innerHTML='';
+             if(!allPoints.length) return;
+             const daily = {};
+             allPoints.forEach(p => { const d=new Date(p.ts).toISOString().split('T')[0]; daily[d]=(daily[d]||0)+(p.d_dist||0); });
+             const data=Object.entries(daily).map(([k,v])=>({date:new Date(k), val:v/1000}));
+             const cellSize=12, height=cellSize*7+20, years=d3.groups(data, d=>d.date.getUTCFullYear());
+             years.forEach(([y,vals]) => {
+                 const div=document.createElement('div'); div.innerHTML=`<div class="text-xs font-bold text-gray-500 mt-2 sticky left-0">${y}</div>`; c.appendChild(div);
+                 const svg=d3.select(div).append('svg').attr('width',53*cellSize+20).attr('height',height);
+                 const g=svg.append('g').attr('transform',`translate(10,0)`);
+                 const color=d3.scaleSequential(d3.interpolateBlues).domain([0,50]);
+                 g.selectAll('rect').data(vals).enter().append('rect')
+                   .attr('width',cellSize-2).attr('height',cellSize-2)
+                   .attr('x',d=>d3.utcWeek.count(d3.utcYear(d.date),d.date)*cellSize).attr('y',d=>d.date.getUTCDay()*cellSize)
+                   .attr('fill',d=>color(d.val)).attr('class','cal-day')
+                   .on('click',(e,d)=>{ 
+                        picker.setDate([d.date, new Date(d.date.getTime()+86400000)], true);
+                        updateMapVisualization();
+                        const ts = d.date.getTime();
+                        const idx = currentViewPoints.findIndex(p => p.ts >= ts);
+                        if(idx!==-1) seekAnimation((idx/currentViewPoints.length)*10000);
+                        if(!isPlaying) toggleAnimation();
+                   });
+             });
+        }
+
+        function renderActivityBreakdown() { 
+            const counts={}; currentViewPoints.forEach(p=>{counts[p.act]=(counts[p.act]||0)+1});
+            const d=Object.entries(counts).map(([k,v])=>({label:k, value:v})).sort((a,b)=>b.value-a.value);
+            const c=document.getElementById('activity-chart-container'); c.innerHTML='';
+            if(!d.length) return;
+            const w=200,h=150,r=70, svg=d3.select(c).append('svg').attr('width',w).attr('height',h).append('g').attr('transform',`translate(${w/2},${h/2})`);
+            const pie=d3.pie().value(d=>d.value); const arc=d3.arc().innerRadius(r-20).outerRadius(r); const color=d3.scaleOrdinal(d3.schemeCategory10);
+            svg.selectAll('path').data(pie(d)).enter().append('path').attr('d',arc).attr('fill',d=>color(d.data.label)).append('title').text(d=>`${d.data.label}: ${d.data.value}`);
+        }
+
+        function refreshAnalysis() {
+             renderTopLocations();
+             renderCalendarHeatmap();
+             renderActivityBreakdown();
+        }
+
+        function updateStyles() { 
+            const c = document.getElementById('path-color').value; 
+            const o = parseFloat(document.getElementById('path-opacity').value);
+            layerGroups.path.eachLayer(layer => {
+                layer.setStyle({ color: c, opacity: o }); 
+            });
+            const r = parseInt(document.getElementById('heat-radius').value); 
+            const b = parseInt(document.getElementById('heat-blur').value); 
+            layerGroups.heat.setOptions({ radius: r, blur: b }); 
+        }
+
+        function loadFile(file) { 
+            document.getElementById('loading').style.display = 'flex';
+            if(file.name.endsWith('.json') || file.name.endsWith('.inowya')) worker.postMessage({ file, type: 'json' });
+            else if(file.name.endsWith('.zip')) {
+                JSZip.loadAsync(file).then(zip => { 
+                    const settingsFile = Object.keys(zip.files).find(n => n.includes('Settings.json'));
+                    let targetFile = null, maxBytes = 0;
+                    Object.keys(zip.files).forEach(filename => {
+                        if (filename.endsWith('.json') && !filename.includes('Settings') && !filename.includes('manifest') && !filename.startsWith('__MACOSX')) {
+                            if (zip.files[filename]._data && zip.files[filename]._data.uncompressedSize > maxBytes) { maxBytes = zip.files[filename]._data.uncompressedSize; targetFile = filename; }
+                        }
+                    });
+
+                    if(targetFile) {
+                        const p = [zip.file(targetFile).async('blob')];
+                        if(settingsFile) p.push(zip.file(settingsFile).async('text'));
+                        Promise.all(p).then(results => {
+                            worker.postMessage({ file: results[0], type: 'json', settingsContent: results[1] || null });
+                        });
+                    } else { hideLoading(); alert('No valid location JSON found in ZIP.'); } 
+                }).catch(e => { hideLoading(); alert('Failed to read ZIP: '+e.message); });
+            } else { hideLoading(); alert('Invalid file type.'); }
+        }
+        function setupDatePicker(dates) { picker = flatpickr("#date-range", { mode: "range", dateFormat: "Y-m-d", theme: "dark", enable: dates, onChange: fastUpdate }); }
+        function generateFilters(items, id, cls) { const d=document.getElementById(id); d.innerHTML=''; items.forEach(i => { const div=document.createElement('div'); div.className='filter-item'; div.innerHTML=`<label><input type="checkbox" class="${cls}" value="${i}" checked onchange="fastUpdate()"><span>${i}</span></label>`; d.appendChild(div); }); }
+        function togglePanel() { document.getElementById('floating-panel').classList.toggle('collapsed'); }
+        function changeMapType() { const v = document.getElementById('mapType').value; Object.values(tileLayers).forEach(l=>map.removeLayer(l)); tileLayers[v].addTo(map); }
+        function toggleLayer(k) { fastUpdate(); }
+        function fastUpdate() { if(animTimer) return; setTimeout(updateMapVisualization, 50); }
+        function triggerStopCalc() { worker.postMessage({ type: 'recalc_stops', points: allPoints, minDurationMin: document.getElementById('stop-duration').value }); }
+        function updateLabel(id, v, s) { document.getElementById(id).innerText = v + s; }
+        function switchTab(t, b) { activeTab=t; document.querySelectorAll('.tab-view').forEach(e=>e.classList.remove('active')); document.getElementById('view-'+t).classList.add('active'); document.querySelectorAll('.tab-btn').forEach(e=>e.classList.remove('active')); b.classList.add('active'); if(t==='analysis') refreshAnalysis(); }
+        function makeDraggable(el) { let pos1=0,pos2=0,pos3=0,pos4=0; el.querySelector('.panel-header').onmousedown = e => { e.preventDefault(); pos3=e.clientX; pos4=e.clientY; document.onmouseup=()=>(document.onmouseup=document.onmousemove=null); document.onmousemove=e=>{ e.preventDefault(); pos1=pos3-e.clientX; pos2=pos4-e.clientY; pos3=e.clientX; pos4=e.clientY; el.style.top=(el.offsetTop-pos2)+"px"; el.style.left=(el.offsetLeft-pos1)+"px"; }}; }
+
+        function showShortcuts(){
+          const div = document.createElement('div');
+          div.className = 'absolute top-14 left-20 bg-gray-900/90 text-xs p-3 rounded border border-gray-700 z-50';
+          div.innerHTML = `
+            <div class="mb-1 font-bold">Shortcuts</div>
+            <div>Space → play/pause</div>
+            <div>← / → → step / seek</div>
+            <div>Shift + ← / → → fine step</div>
+            <div>Esc → toggle panel</div>
+          `;
+          document.body.appendChild(div);
+          setTimeout(()=>div.remove(), 3000);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if(e.target.tagName==='INPUT') return;
+            if(e.code==='Space') { e.preventDefault(); toggleAnimation(); }
+            if(e.code==='ArrowRight') { e.shiftKey ? stepFrame(1) : seekAnimation(parseInt(document.getElementById('anim-slider').value)+100); }
+            if(e.code==='ArrowLeft') { e.shiftKey ? stepFrame(-1) : seekAnimation(parseInt(document.getElementById('anim-slider').value)-100); }
+            if(e.code==='Escape') togglePanel();
+            if(e.key==='?') showShortcuts();
+        });
+    </script>
+</body>
+</html>
