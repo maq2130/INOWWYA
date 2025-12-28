@@ -1,67 +1,82 @@
 
-# INOWYA - Private Location History Visualizer 📍
+# 🕵️ INOWYA Vx.3.8 (Forensic Location Intelligence)
 
-**INOWYA** (I Know Where You Are) is a powerful, offline-first visualization tool for Google Takeout Location History data. It operates entirely in your browser using a single HTML file—no data is ever uploaded to a server.
+**INOWYA** is a high-performance, single-file HTML application designed for the forensic analysis of large-scale location datasets (such as Google Takeout). It runs entirely in the browser (client-side) to ensure data privacy while utilizing GPU acceleration to visualize hundreds of thousands of data points instantly.
 
-  
+### 🎯 Core Mission
 
-## 🚀 Key Features
+To transform raw, messy coordinate data into a coherent, interactive timeline of a subject's life, allowing investigators to identify patterns, spot anomalies, and export evidentiary reports.
 
-  * **🔒 100% Privacy Focused:** All processing happens client-side via Web Workers. Your location data never leaves your device.
-  * **📂 Drag & Drop Import:** Supports raw JSON, ZIP archives (Google Takeout), and custom `.inowya` project files.
-  * **🗺️ Interactive Mapping:**
-      * Heatmaps with adjustable radius and intensity.
-      * Clickable path lines showing speed and activity.
-      * Smart "Stop Detection" to identify places you visited.
-  * **📊 Deep Analysis:**
-      * **Top Locations:** Automatically clusters stops to find your most visited places (with adjustable merge radius).
-      * **Activity Breakdown:** Visualizes time spent moving vs. stationary.
-      * **Yearly Heatmap:** GitHub-style contribution graph for your travel history.
-  * **⏯️ Time Travel Animation:** "Smart Skip" player that fast-forwards through stationary periods to replay your trips.
-  * **🌍 Address Enrichment:** Optional reverse-geocoding (via OpenStreetMap) to turn coordinates into readable addresses.
+---
 
-## 🛠️ Installation & Usage
+### ⚙️ Technical Architecture
 
-No installation required\! This is a "Zero-Dependency" tool.
+* **Format:** Single-File HTML (Runs offline, no server required).
+* **Engine:** Vanilla JavaScript with **Web Workers** for multi-threaded processing.
+* **Database:** **Dexie.js** (IndexedDB) for handling massive datasets (100k+ points) without UI lag.
+* **Rendering:**
+* **Leaflet.js:** For standard map layers and vector overlays.
+* **Leaflet.glify (WebGL):** For GPU-accelerated rendering of raw GPS pings.
+* **D3.js:** For activity charts and calendar heatmaps.
 
-1.  **Download:** Get the latest `index.html` from the [Releases](https://www.google.com/search?q=https://github.com/yourusername/inowya/releases) page.
-2.  **Run:** Double-click `index.html` to open it in Chrome, Firefox, or Edge.
-3.  **Import Data:**
-      * Go to [Google Takeout](https://takeout.google.com/).
-      * Export "Location History" (JSON format).
-      * Drag and drop the `Records.json` or the `zip` file into the INOWYA window.
 
-## 🎛️ Controls
+* **Input:** Google Location History (JSON), ZIP archives, or custom `.inowya` Case Files.
 
-| Feature | Description |
-| :--- | :--- |
-| **Smart Date Filter** | Select specific date ranges to analyze trips. |
-| **Accuracy Slider** | Filter out noisy GPS points (e.g., \> 500m accuracy). |
-| **Merge Radius** | Slider (10m - 500m) to group nearby GPS points into single locations. |
-| **Speed Chart** | Interactive D3.js graph showing velocity over time. |
+---
 
-## 🏗️ Architecture
+### 🚀 Key Features
 
-  * **Core:** Native HTML5/JS (ES6+).
-  * **Mapping:** [Leaflet.js](https://leafletjs.com/) with CartoDB & ESRI tiles.
-  * **Clustering:** `Leaflet.markercluster` for efficient data rendering.
-  * **Charts:** [D3.js](https://d3js.org/) for analytics.
-  * **Processing:** Dedicated **Web Worker** for non-blocking parsing of large datasets (500MB+ JSON files).
+#### 1. Visualization & Mapping
 
-## 🤝 Contributing
+* **Deep Zoom Layers:** Supports Google Streets, Satellite, Hybrid, Traffic, and Carto Dark/Light modes up to Zoom Level 22.
+* **Behavioral Color Coding:** Paths are automatically colored by calculated speed:
+* 🔵 **Walking** (<5 km/h)
+* 🟢 **Cycling** (5–25 km/h)
+* 🟡 **Driving** (25–80 km/h)
+* 🔴 **Highway** (>80 km/h)
 
-Contributions are welcome\! Please feel free to submit a Pull Request.
 
-1.  Fork the Project
-2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4.  Push to the Branch (`git push origin feature/AmazingFeature`)
-5.  Open a Pull Request
+* **GPU Raw Pings:** A dedicated high-performance layer that renders every single GPS point as a discrete dot, capable of handling millions of points.
+* **Transparency Controls:** A specialized slider allows you to fade the trajectory lines to reveal the underlying map, while keeping the raw GPS pings opaque for precision analysis.
+* **Accuracy Overlay:** Visualizes the "margin of error" for each point as a red circle, helping distinguish between actual movement and GPS drift.
 
-## 📜 License
+#### 2. Advanced Playback & Timeline
 
-Distributed under the MIT License. See `LICENSE` for more information.
+* **Scrubbing Timeline:** A slider allows for instant manual scrubbing through the dataset with immediate visual feedback on the map.
+* **Super Slow Motion:** Playback speeds ranging from **0.001x** (frame-by-frame forensic view) to **500x** (rapid life overview).
+* **Day-in-the-Life Replay:** Clicking any day on the yearly calendar heatmap instantly isolates that 24-hour period and begins playback.
+* **Smart Skip:** The animation engine automatically fast-forwards through long stationary periods (like sleeping) to save review time.
 
------
+#### 3. Forensic Intelligence
 
-*Note: This project is not affiliated with Google. "Location History" is a trademark of Google LLC.*
+* **Stop Detection:** Automatically clusters points into "Stops" based on configurable duration (e.g., "Anywhere stayed for > 20 mins").
+* **Top Locations:** Generates a ranked list of most-visited places, merging nearby stops into single locations.
+* **Anomaly Detection:** Scans the dataset for physical impossibilities, such as "Teleportation" events (speed > 800 km/h) or significant data gaps (> 24 hours).
+* **Searchable Index:** A real-time search bar allows filtering of the top locations list by address or name.
+* **Proximity Rings:** Toggles 100m, 500m, and 1km rings around specific points to check for geofence violations.
+
+#### 4. Case Management & Reporting
+
+* **Annotation System:** Allows investigators to click any point or stop and attach a persistent text note.
+* **Forensic Report:** Generates a printable HTML summary of the investigation, including rank-ordered locations, times, and notes.
+* **Evidence Export:**
+* **CSV:** Raw tabular data for Excel.
+* **GPX / KML / GeoJSON:** Standard GIS formats.
+* **Case File (.inowya):** A proprietary ZIP bundle that saves the cleaned track data, address cache, and all user annotations into a single file for sharing or archiving.
+
+
+
+---
+
+### 🕹️ User Controls
+
+* **Top Left:** Floating Panel (collapsible) containing Data Source, Filters, Layers, and Analysis tabs.
+* **Bottom Center:** Playback controls (Play/Pause, Step Frame, Speed, Timeline Scrub).
+* **Keyboard Shortcuts:**
+* `Space`: Play/Pause
+* `Left/Right Arrows`: Scrub/Step Frame
+* `?`: Show Shortcuts Overlay
+
+
+
+This version represents a **complete forensic suite** capable of handling professional-grade location investigations.
